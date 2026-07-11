@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SPECTER">
+<meta name="theme-color" content="#0D0B10">
+<title>SPECTER — Speak. It remembers.</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%230D0B10' stroke='%239BE8C8' stroke-width='5'/%3E%3Ccircle cx='50' cy='50' r='16' fill='%239BE8C8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,800;1,400&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0D0B10;
+  --surface:#16131C;
+  --surface2:#1E1A27;
+  --line:#2B2536;
+  --bone:#EDE8DC;
+  --bone-dim:#9B93A6;
+  --ecto:#9BE8C8;
+  --ecto-dim:#4E7A6A;
+  --violet:#6E5A8C;
+  --ember:#E06C5C;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--void);
+  color:var(--bone);
+  font-family:'Karla',system-ui,sans-serif;
+  font-size:16px;
+  overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+}
+#app{
+  height:100vh;height:100dvh;
+  display:flex;flex-direction:column;
+  max-width:560px;margin:0 auto;
+  position:relative;
+}
+/* ---------- header ---------- */
+header{
+  padding:calc(var(--sat) + 14px) 20px 10px;
+  display:flex;align-items:baseline;justify-content:space-between;
+  flex-shrink:0;
+}
+.wordmark{
+  font-family:'Spectral',serif;font-weight:800;font-size:20px;
+  letter-spacing:.14em;color:var(--bone);
+}
+.wordmark span{color:var(--ecto)}
+.header-date{font-size:12px;color:var(--bone-dim);letter-spacing:.06em;text-transform:uppercase}
+#settingsBtn{background:none;border:none;color:var(--bone-dim);font-size:18px;cursor:pointer;padding:4px 0 4px 12px}
+/* ---------- views ---------- */
+main{flex:1;overflow-y:auto;padding:4px 20px 130px;-webkit-overflow-scrolling:touch}
+.view{display:none}
+.view.active{display:block}
+.view-title{
+  font-family:'Spectral',serif;font-weight:600;font-size:26px;
+  margin:10px 0 2px;
+}
+.view-sub{color:var(--bone-dim);font-size:13px;margin-bottom:16px}
+/* ---------- agenda ---------- */
+.agenda-item{
+  display:flex;gap:14px;padding:13px 14px;margin-bottom:8px;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  align-items:flex-start;
+}
+.agenda-item.past{opacity:.45}
+.agenda-time{
+  font-family:var(--mono);font-size:12px;color:var(--ecto);
+  min-width:58px;padding-top:2px;letter-spacing:.02em;
+}
+.agenda-time.allday{color:var(--violet)}
+.agenda-body{flex:1;min-width:0}
+.agenda-title{font-weight:500;font-size:15px;line-height:1.35;word-break:break-word}
+.agenda-meta{font-size:12px;color:var(--bone-dim);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.agenda-meta .rec{color:var(--violet)}
+.agenda-meta .rem{color:var(--ecto-dim)}
+.agenda-item.todo-row .agenda-time{color:var(--ember)}
+.empty-state{
+  text-align:center;padding:44px 20px;color:var(--bone-dim);
+}
+.empty-state .es-glyph{font-family:'Spectral',serif;font-size:34px;font-style:italic;color:var(--violet);margin-bottom:8px}
+.empty-state p{font-size:14px;line-height:1.5}
+.section-label{
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--bone-dim);margin:20px 0 10px;display:flex;align-items:center;gap:10px;
+}
+.section-label::after{content:"";flex:1;height:1px;background:var(--line)}
+/* ---------- calendar ---------- */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px}
+.cal-nav h2{font-family:'Spectral',serif;font-weight:600;font-size:22px}
+.cal-nav button{
+  background:var(--surface);border:1px solid var(--line);color:var(--bone);
+  width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer;
+}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{text-align:center;font-size:10px;letter-spacing:.1em;color:var(--bone-dim);padding:4px 0;text-transform:uppercase}
+.cal-cell{
+  aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-size:14px;cursor:pointer;
+  border:1px solid transparent;color:var(--bone);position:relative;background:none;font-family:'Karla',sans-serif;
+}
+.cal-cell.other{color:#4a4356}
+.cal-cell.today{border-color:var(--ecto);color:var(--ecto);font-weight:700}
+.cal-cell.selected{background:var(--surface2);border-color:var(--violet)}
+.cal-dots{display:flex;gap:3px;height:5px;margin-top:3px}
+.cal-dot{width:4px;height:4px;border-radius:50%;background:var(--ecto)}
+.cal-dot.t{background:var(--ember)}
+.day-panel{margin-top:18px}
+/* ---------- todos ---------- */
+.todo-item{
+  display:flex;gap:12px;align-items:flex-start;padding:13px 14px;margin-bottom:8px;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+}
+.todo-check{
+  width:22px;height:22px;border-radius:7px;border:1.5px solid var(--violet);
+  background:none;cursor:pointer;flex-shrink:0;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;color:var(--void);font-size:13px;
+}
+.todo-item.done .todo-check{background:var(--ecto);border-color:var(--ecto)}
+.todo-item.done .todo-title{text-decoration:line-through;color:var(--bone-dim)}
+.todo-body{flex:1;min-width:0}
+.todo-title{font-size:15px;font-weight:500;word-break:break-word}
+.todo-due{font-family:var(--mono);font-size:11px;color:var(--bone-dim);margin-top:3px}
+.todo-due.overdue{color:var(--ember)}
+.icon-del{background:none;border:none;color:#5a5266;font-size:15px;cursor:pointer;padding:2px 4px;flex-shrink:0}
+.quick-add{display:flex;gap:8px;margin-bottom:16px}
+.quick-add input{
+  flex:1;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;color:var(--bone);font-size:15px;font-family:'Karla',sans-serif;
+}
+.quick-add input::placeholder{color:#5a5266}
+.quick-add button{
+  background:var(--surface2);border:1px solid var(--line);color:var(--ecto);
+  border-radius:12px;width:48px;font-size:20px;cursor:pointer;
+}
+/* ---------- tab bar + orb ---------- */
+nav{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:10px 10px calc(var(--sab) + 10px);
+  background:linear-gradient(to top,var(--void) 60%,transparent);
+  display:flex;justify-content:space-around;align-items:flex-end;
+}
+.tab{
+  background:none;border:none;color:var(--bone-dim);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-family:'Karla',sans-serif;
+  padding:6px 12px;width:74px;
+}
+.tab .glyph{font-size:19px;line-height:1}
+.tab.active{color:var(--ecto)}
+/* the séance orb */
+#orbWrap{position:relative;width:74px;display:flex;justify-content:center}
+#orb{
+  width:66px;height:66px;border-radius:50%;cursor:pointer;
+  background:radial-gradient(circle at 38% 32%, #223028, var(--void) 72%);
+  border:1.5px solid var(--ecto-dim);
+  position:relative;bottom:14px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 24px rgba(155,232,200,.10), inset 0 0 18px rgba(155,232,200,.07);
+  transition:box-shadow .4s;
+}
+#orb::before{
+  content:"";position:absolute;inset:-9px;border-radius:50%;
+  border:1px solid rgba(110,90,140,.35);
+  animation:breathe 5s ease-in-out infinite;
+}
+#orb .core{
+  width:16px;height:16px;border-radius:50%;background:var(--ecto);
+  box-shadow:0 0 14px var(--ecto);
+  transition:transform .3s;
+}
+#orb.listening{box-shadow:0 0 44px rgba(155,232,200,.35), inset 0 0 26px rgba(155,232,200,.18)}
+#orb.listening .core{animation:pulse 1.1s ease-in-out infinite}
+#orb.speaking .core{animation:pulse .55s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.7)}}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.12);opacity:1}}
+@media (prefers-reduced-motion:reduce){#orb::before,#orb .core{animation:none!important}}
+/* ---------- sheets ---------- */
+.sheet-backdrop{
+  position:fixed;inset:0;background:rgba(6,5,9,.72);z-index:40;
+  opacity:0;pointer-events:none;transition:opacity .25s;
+}
+.sheet-backdrop.open{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  max-width:560px;margin:0 auto;
+  background:var(--surface);border:1px solid var(--line);border-bottom:none;
+  border-radius:20px 20px 0 0;
+  padding:16px 20px calc(var(--sab) + 22px);
+  transform:translateY(105%);transition:transform .3s cubic-bezier(.3,.9,.3,1);
+  max-height:88dvh;overflow-y:auto;
+}
+.sheet.open{transform:translateY(0)}
+.sheet h3{font-family:'Spectral',serif;font-weight:600;font-size:20px;margin-bottom:14px}
+.sheet .grabber{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--bone-dim);margin-bottom:6px}
+.field input,.field select,.field textarea{
+  width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:10px;
+  padding:11px 12px;color:var(--bone);font-size:15px;font-family:'Karla',sans-serif;
+  appearance:none;-webkit-appearance:none;
+}
+.field input[type=date],.field input[type=time]{font-family:var(--mono);font-size:14px;min-height:44px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{
+  width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:700;
+  font-family:'Karla',sans-serif;cursor:pointer;border:none;letter-spacing:.02em;
+}
+.btn-primary{background:var(--ecto);color:#0b1611}
+.btn-ghost{background:none;border:1px solid var(--line);color:var(--bone-dim);margin-top:8px}
+.btn-danger{background:none;border:1px solid rgba(224,108,92,.4);color:var(--ember);margin-top:8px}
+.day-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  padding:8px 0;width:40px;text-align:center;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface2);color:var(--bone-dim);font-size:12px;cursor:pointer;font-family:'Karla',sans-serif;
+}
+.chip.on{background:var(--violet);border-color:var(--violet);color:var(--bone)}
+/* ---------- voice sheet ---------- */
+#voiceSheet{text-align:center}
+#vsState{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ecto);min-height:16px;margin-bottom:10px}
+#vsTranscript{
+  font-family:'Spectral',serif;font-size:21px;font-style:italic;line-height:1.4;
+  min-height:60px;color:var(--bone);padding:6px 4px 14px;
+}
+#vsTranscript .hint{color:#5a5266;font-size:15px;font-style:normal;font-family:'Karla',sans-serif}
+#vsResult{
+  background:var(--surface2);border:1px solid var(--line);border-radius:12px;
+  padding:14px;margin-bottom:14px;text-align:left;display:none;
+}
+#vsResult .r-kind{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ecto);margin-bottom:5px}
+#vsResult .r-main{font-size:16px;font-weight:700}
+#vsResult .r-sub{font-size:13px;color:var(--bone-dim);margin-top:3px;font-family:var(--mono)}
+.vs-actions{display:flex;gap:10px}
+.vs-actions .btn{flex:1}
+#vsMicBtn{
+  width:84px;height:84px;border-radius:50%;margin:2px auto 16px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;
+  background:radial-gradient(circle at 38% 32%, #223028, var(--void) 75%);
+  border:1.5px solid var(--ecto-dim);
+  box-shadow:0 0 26px rgba(155,232,200,.12);
+}
+#vsMicBtn.listening{box-shadow:0 0 54px rgba(155,232,200,.4)}
+#vsMicBtn .core{width:20px;height:20px;border-radius:50%;background:var(--ecto);box-shadow:0 0 16px var(--ecto)}
+#vsMicBtn.listening .core{animation:pulse 1.1s infinite}
+#vsTextRow{display:flex;gap:8px;margin-top:14px}
+#vsTextRow input{
+  flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;color:var(--bone);font-size:15px;font-family:'Karla',sans-serif;
+}
+#vsTextRow button{background:var(--surface2);border:1px solid var(--line);color:var(--ecto);border-radius:12px;width:48px;font-size:17px;cursor:pointer}
+.vs-help{font-size:12px;color:#5a5266;line-height:1.7;margin-top:14px;text-align:left}
+.vs-help b{color:var(--bone-dim);font-weight:500}
+/* ---------- reminder banner ---------- */
+#banner{
+  position:fixed;top:calc(var(--sat) + 10px);left:14px;right:14px;z-index:80;
+  max-width:530px;margin:0 auto;
+  background:var(--surface2);border:1px solid var(--ecto-dim);border-radius:14px;
+  padding:14px 16px;display:none;align-items:flex-start;gap:12px;
+  box-shadow:0 8px 30px rgba(0,0,0,.5), 0 0 20px rgba(155,232,200,.08);
+}
+#banner .b-glyph{color:var(--ecto);font-size:18px;padding-top:1px}
+#banner .b-title{font-weight:700;font-size:14px}
+#banner .b-sub{font-size:12px;color:var(--bone-dim);margin-top:2px}
+#banner button{margin-left:auto;background:none;border:none;color:var(--bone-dim);font-size:16px;cursor:pointer}
+/* settings */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--line)}
+.set-row .s-label{font-size:15px}
+.set-row .s-sub{font-size:12px;color:var(--bone-dim);margin-top:2px}
+.toggle{width:48px;height:28px;border-radius:14px;background:var(--surface2);border:1px solid var(--line);position:relative;cursor:pointer;flex-shrink:0}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--bone-dim);transition:.2s}
+.toggle.on{background:var(--ecto-dim);border-color:var(--ecto-dim)}
+.toggle.on::after{left:23px;background:var(--ecto)}
+.hairline-note{font-size:12px;color:#5a5266;line-height:1.6;margin-top:14px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <div class="wordmark">SPECT<span>ER</span></div>
+      <div class="header-date" id="headerDate"></div>
+    </div>
+    <button id="settingsBtn" aria-label="Settings">⚙︎</button>
+  </header>
+
+  <main id="main">
+    <!-- TODAY -->
+    <section class="view active" id="view-today">
+      <h1 class="view-title" id="todayTitle">Today</h1>
+      <div class="view-sub" id="todaySub"></div>
+      <div id="todayList"></div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section class="view" id="view-cal">
+      <div class="cal-nav">
+        <button id="calPrev" aria-label="Previous month">‹</button>
+        <h2 id="calMonthLabel"></h2>
+        <button id="calNext" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="day-panel">
+        <div class="section-label" id="dayPanelLabel">Selected day</div>
+        <div id="dayPanelList"></div>
+        <button class="btn btn-ghost" id="addEventBtn">+ Add event</button>
+      </div>
+    </section>
+
+    <!-- TASKS -->
+    <section class="view" id="view-tasks">
+      <h1 class="view-title">Tasks</h1>
+      <div class="view-sub">The list keeps itself. You just feed it.</div>
+      <div class="quick-add">
+        <input id="quickTodo" placeholder="Add a task… (try “dog food friday”)" autocomplete="off">
+        <button id="quickTodoBtn" aria-label="Add task">+</button>
+      </div>
+      <div id="todoList"></div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="tab active" data-view="today"><span class="glyph">☉</span>Today</button>
+    <button class="tab" data-view="cal"><span class="glyph">▦</span>Calendar</button>
+    <div id="orbWrap"><div id="orb" role="button" aria-label="Voice command"><div class="core"></div></div></div>
+    <button class="tab" data-view="tasks"><span class="glyph">☰</span>Tasks</button>
+    <button class="tab" id="tabSpeak"><span class="glyph">◍</span>Read day</button>
+  </nav>
+</div>
+
+<div class="sheet-backdrop" id="backdrop"></div>
+
+<!-- VOICE SHEET -->
+<div class="sheet" id="voiceSheet">
+  <div class="grabber"></div>
+  <div id="vsState">idle</div>
+  <div id="vsMicBtn"><div class="core"></div></div>
+  <div id="vsTranscript"><span class="hint">Tap the orb and speak through your glasses.</span></div>
+  <div id="vsResult">
+    <div class="r-kind" id="rKind"></div>
+    <div class="r-main" id="rMain"></div>
+    <div class="r-sub" id="rSub"></div>
+  </div>
+  <div class="vs-actions" id="vsActions" style="display:none">
+    <button class="btn btn-ghost" id="vsCancel" style="margin:0">Cancel</button>
+    <button class="btn btn-primary" id="vsConfirm">Confirm</button>
+  </div>
+  <div id="vsTextRow">
+    <input id="vsText" placeholder="Or type a command…" autocomplete="off">
+    <button id="vsTextGo" aria-label="Run command">→</button>
+  </div>
+  <div class="vs-help">
+    <b>Try:</b> “dentist tuesday at 3pm remind me 30 minutes before” · “team huddle every monday at 9am” ·
+    “add dog food to my list” · “note pick up refill” · “what's on tomorrow” · “read my tasks” ·
+    “done dog food” · “delete dentist”<br>
+    <b>Session:</b> answer <b>“yes”/“no”</b> aloud to confirm · say <b>“that's all”</b> to close
+  </div>
+</div>
+
+<!-- EVENT SHEET -->
+<div class="sheet" id="eventSheet">
+  <div class="grabber"></div>
+  <h3 id="eventSheetTitle">New event</h3>
+  <div class="field"><label>Title</label><input id="evTitle" autocomplete="off"></div>
+  <div class="row2">
+    <div class="field"><label>Date</label><input type="date" id="evDate"></div>
+    <div class="field"><label>Time (blank = all-day)</label><input type="time" id="evTime"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>Repeats</label>
+      <select id="evFreq">
+        <option value="">Never</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly (same date)</option>
+      </select>
+    </div>
+    <div class="field"><label>Reminder</label>
+      <select id="evRem">
+        <option value="">None</option>
+        <option value="0">At time</option>
+        <option value="5">5 min before</option>
+        <option value="15">15 min before</option>
+        <option value="30">30 min before</option>
+        <option value="60">1 hour before</option>
+        <option value="1440">1 day before</option>
+      </select>
+    </div>
+  </div>
+  <div class="field" id="evDaysField" style="display:none"><label>On days</label>
+    <div class="day-chips" id="evDayChips"></div>
+  </div>
+  <div class="field" id="evUntilField" style="display:none"><label>Until (optional)</label><input type="date" id="evUntil"></div>
+  <div class="field"><label>Notes</label><input id="evNotes" autocomplete="off"></div>
+  <button class="btn btn-primary" id="evSave">Save event</button>
+  <button class="btn btn-danger" id="evDelete" style="display:none">Delete event</button>
+</div>
+
+<!-- SETTINGS SHEET -->
+<div class="sheet" id="settingsSheet">
+  <div class="grabber"></div>
+  <h3>Settings</h3>
+  <div class="set-row">
+    <div><div class="s-label">Hands-free mode</div><div class="s-sub">One orb tap starts a voice session: say commands, answer “yes/no” aloud, chain until “that's all”</div></div>
+    <div class="toggle" id="tglHandsFree"></div>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Spoken reminders</div><div class="s-sub">Announce reminders aloud (through glasses)</div></div>
+    <div class="toggle" id="tglAnnounce"></div>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Speak confirmations</div><div class="s-sub">Read back what was added</div></div>
+    <div class="toggle" id="tglConfirm"></div>
+  </div>
+  <div class="set-row">
+    <div style="flex:1;margin-right:14px"><div class="s-label">Voice speed</div>
+      <input type="range" id="rngRate" min="0.7" max="1.4" step="0.1" style="width:100%;margin-top:8px;accent-color:var(--ecto)">
+    </div>
+    <button class="btn btn-ghost" id="testVoice" style="width:auto;margin:0;padding:10px 14px">Test</button>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Default reminder</div><div class="s-sub">For voice-added timed events</div></div>
+    <select id="selDefRem" style="background:var(--surface2);border:1px solid var(--line);color:var(--bone);border-radius:10px;padding:9px 10px;font-family:'Karla'">
+      <option value="">None</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hr</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Backup</div><div class="s-sub">Export or import all data (JSON)</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" id="btnExport" style="width:auto;margin:0;padding:10px 14px">Export</button>
+      <button class="btn btn-ghost" id="btnImport" style="width:auto;margin:0;padding:10px 14px">Import</button>
+      <input type="file" id="fileImport" accept=".json" style="display:none">
+    </div>
+  </div>
+  <p class="hairline-note">
+    Reminders announce while SPECTER is open (foreground or recently backgrounded, browser permitting).
+    With your Ray-Ban Metas connected as the phone's Bluetooth audio, everything it says arrives in your ear —
+    and everything you say to the orb goes through the glasses mic. For guaranteed lock-screen alerts,
+    add SPECTER to your Home Screen and allow notifications.
+  </p>
+</div>
+
+<div id="banner">
+  <div class="b-glyph">◍</div>
+  <div><div class="b-title" id="bTitle"></div><div class="b-sub" id="bSub"></div></div>
+  <button id="bClose" aria-label="Dismiss">✕</button>
+</div>
+
+<script>
+"use strict";
+/* =============== state =============== */
+const LS = {
+  events:"specter_events", todos:"specter_todos", settings:"specter_settings", fired:"specter_fired"
+};
+const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
+const save = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
+let events = load(LS.events,[]);
+let todos  = load(LS.todos,[]);
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15"},load(LS.settings,{}));
+let fired = load(LS.fired,{});
+const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+/* =============== date utils =============== */
+const DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const DOW_S = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const pad = n=>String(n).padStart(2,"0");
+const ymd = d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = ()=>ymd(new Date());
+const fromYMD = s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const niceDate = s=>{
+  const d=fromYMD(s), t=todayStr();
+  if(s===t) return "Today";
+  const tm=new Date(); tm.setDate(tm.getDate()+1);
+  if(s===ymd(tm)) return "Tomorrow";
+  return `${DOW_S[d.getDay()]}, ${MON[d.getMonth()].slice(0,3)} ${d.getDate()}`;
+};
+const niceTime = t=>{
+  if(!t) return "";
+  let [h,m]=t.split(":").map(Number);
+  const ap=h>=12?"PM":"AM"; h=h%12||12;
+  return m? `${h}:${pad(m)} ${ap}` : `${h} ${ap}`;
+};
+const spokenTime = t=>{
+  if(!t) return "";
+  let [h,m]=t.split(":").map(Number);
+  const ap=h>=12?"P M":"A M"; h=h%12||12;
+  return m? `${h} ${m<10?"oh "+m:m} ${ap}` : `${h} ${ap}`;
+};
+
+/* =============== recurrence =============== */
+function occursOn(ev, dateStr){
+  if(ev.date===dateStr) return true;
+  if(!ev.rec) return false;
+  const start=fromYMD(ev.date), d=fromYMD(dateStr);
+  if(d<start) return false;
+  if(ev.rec.until && dateStr>ev.rec.until) return false;
+  const f=ev.rec.freq;
+  if(f==="daily") return true;
+  if(f==="weekly"){
+    const days = (ev.rec.days&&ev.rec.days.length)? ev.rec.days : [start.getDay()];
+    return days.includes(d.getDay());
+  }
+  if(f==="monthly") return d.getDate()===start.getDate();
+  return false;
+}
+function eventsOn(dateStr){
+  return events.filter(e=>occursOn(e,dateStr))
+    .sort((a,b)=>(a.time||"00:00").localeCompare(b.time||"00:00") || a.title.localeCompare(b.title));
+}
+function todosOn(dateStr){ return todos.filter(t=>t.due===dateStr && !t.done); }
+
+/* =============== speech (TTS) =============== */
+let voiceUnlocked=false;
+function unlockVoice(){
+  if(voiceUnlocked) return;
+  try{
+    const u=new SpeechSynthesisUtterance(" ");u.volume=0;
+    speechSynthesis.speak(u); voiceUnlocked=true;
+  }catch(e){}
+}
+let afterTTS=null; // one-shot callback fired when the NEXT speak() finishes (or immediately if speech unavailable)
+function speak(text, force){
+  const myCb=afterTTS; afterTTS=null; // this utterance claims the pending callback
+  let called=false;
+  const done=()=>{ if(called)return; called=true; orb.classList.remove("speaking"); if(myCb)setTimeout(myCb,250); };
+  if(!("speechSynthesis" in window)) { done(); return; }
+  if(!force && !settings.confirm) { done(); return; }
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.rate=settings.rate||1;
+    u.onstart=()=>orb.classList.add("speaking");
+    u.onend=done;
+    u.onerror=done;
+    speechSynthesis.speak(u);
+    // watchdog: some iOS builds drop onend
+    setTimeout(()=>{ if(!called && !speechSynthesis.speaking) done(); }, Math.min(20000, 2500+text.length*70));
+  }catch(e){ done(); }
+}
+const announce = t=>{ if(settings.announce) speak(t,true); };
+
+/* =============== reminder engine =============== */
+function occKey(ev,dateStr){ return ev.id+"|"+dateStr; }
+function checkReminders(){
+  const now=new Date(), t=todayStr();
+  eventsOn(t).forEach(ev=>{
+    if(ev.rem===""||ev.rem==null||!ev.time) return;
+    const [h,m]=ev.time.split(":").map(Number);
+    const evTime=new Date(); evTime.setHours(h,m,0,0);
+    const fireAt=new Date(evTime.getTime()-Number(ev.rem)*60000);
+    const key=occKey(ev,t);
+    if(now>=fireAt && now<evTime.getTime()+60000 && !fired[key]){
+      fired[key]=1; save(LS.fired,fired);
+      fireReminder(ev);
+    }
+  });
+  // prune old fired keys occasionally
+  if(Math.random()<0.02){
+    Object.keys(fired).forEach(k=>{ if(k.split("|")[1]<t) delete fired[k]; });
+    save(LS.fired,fired);
+  }
+}
+function fireReminder(ev){
+  const lead=Number(ev.rem);
+  const when = lead===0? "now" : lead>=60? `in ${lead/60} hour${lead>=120?"s":""}` : `in ${lead} minutes`;
+  const sub = `${niceTime(ev.time)}${ev.notes? " · "+ev.notes:""}`;
+  showBanner(ev.title, `${when==="now"?"Starting now":"Coming up "+when} · ${sub}`);
+  announce(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${spokenTime(ev.time)}.`);
+  if("Notification" in window && Notification.permission==="granted"){
+    try{ new Notification("SPECTER · "+ev.title,{body:sub}); }catch(e){}
+  }
+  render();
+}
+setInterval(checkReminders, 20000);
+let bTimer;
+function showBanner(title,sub){
+  document.getElementById("bTitle").textContent=title;
+  document.getElementById("bSub").textContent=sub;
+  const b=document.getElementById("banner"); b.style.display="flex";
+  clearTimeout(bTimer); bTimer=setTimeout(()=>b.style.display="none", 20000);
+}
+document.getElementById("bClose").onclick=()=>document.getElementById("banner").style.display="none";
+
+/* =============== natural language parsing =============== */
+function parseTimeToken(str){
+  // returns "HH:MM" or null
+  str=str.trim().toLowerCase();
+  if(str==="noon"||str==="midday") return "12:00";
+  if(str==="midnight") return "00:00";
+  let m=str.match(/^(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/);
+  if(!m) return null;
+  let h=Number(m[1]), min=m[2]?Number(m[2]):0, ap=m[3]?m[3][0]:null;
+  if(h>23||min>59) return null;
+  if(ap==="p"&&h<12)h+=12;
+  if(ap==="a"&&h===12)h=0;
+  if(!ap && h>=1 && h<=6) h+=12; // "at 3" without am/pm → assume afternoon
+  return `${pad(h)}:${pad(min)}`;
+}
+const WORDNUM={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,fifteen:15,twenty:20,thirty:30,"forty five":45,fortyfive:45,sixty:60};
+function normalizeNums(s){
+  return s.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|sixty)\b/g,
+    w=>WORDNUM[w]??w);
+}
+function parseDateToken(text){
+  // returns {date:"YYYY-MM-DD", consumed:regexMatchString} or null. Searches within text.
+  const t=text.toLowerCase();
+  const now=new Date();
+  let m;
+  if(m=t.match(/\b(day after tomorrow)\b/)){const d=new Date();d.setDate(d.getDate()+2);return{date:ymd(d),consumed:m[1]}}
+  if(m=t.match(/\btomorrow\b/)){const d=new Date();d.setDate(d.getDate()+1);return{date:ymd(d),consumed:"tomorrow"}}
+  if(m=t.match(/\btoday\b|\btonight\b/)){return{date:todayStr(),consumed:m[0]}}
+  // weekday, optional "next"
+  m=t.match(/\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if(m){
+    const target=DOW.findIndex(d=>d.toLowerCase()===m[2]);
+    let diff=(target-now.getDay()+7)%7;
+    if(diff===0) diff = m[1]?7:0; // "next monday" on a monday = +7; bare weekday today = today
+    if(m[1]&&diff<7&&diff>0){/* "next tuesday": if within this week, common usage = upcoming; keep as-is */}
+    const d=new Date(); d.setDate(d.getDate()+diff);
+    return {date:ymd(d),consumed:m[0]};
+  }
+  // month day: "june 5" / "june 5th" / "5th of june"
+  const monRx=MON.map(x=>x.toLowerCase()).join("|");
+  m=t.match(new RegExp("\\b("+monRx+")\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b"));
+  let mo=null,da=null;
+  if(m){mo=MON.findIndex(x=>x.toLowerCase()===m[1]);da=Number(m[2]);}
+  else{
+    m=t.match(new RegExp("\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?("+monRx+")\\b"));
+    if(m){da=Number(m[1]);mo=MON.findIndex(x=>x.toLowerCase()===m[2]);}
+  }
+  if(mo!=null){
+    let y=now.getFullYear();
+    const cand=new Date(y,mo,da);
+    if(cand<new Date(now.getFullYear(),now.getMonth(),now.getDate())) y++;
+    return {date:ymd(new Date(y,mo,da)),consumed:m[0]};
+  }
+  // "the 15th"
+  m=t.match(/\bthe\s+(\d{1,2})(?:st|nd|rd|th)\b/);
+  if(m){
+    const da2=Number(m[1]); let mo2=now.getMonth(), y2=now.getFullYear();
+    if(da2<now.getDate()){mo2++; if(mo2>11){mo2=0;y2++;}}
+    return {date:ymd(new Date(y2,mo2,da2)),consumed:m[0]};
+  }
+  // numeric 6/12 or 6/12/2026
+  m=t.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if(m){
+    let y=m[3]?Number(m[3]):now.getFullYear(); if(y<100)y+=2000;
+    const d=new Date(y,Number(m[1])-1,Number(m[2]));
+    if(!m[3] && d<now) d.setFullYear(d.getFullYear()+1);
+    return {date:ymd(d),consumed:m[0]};
+  }
+  return null;
+}
+function parseRecurrence(text){
+  const t=text.toLowerCase();
+  let m;
+  if(m=t.match(/\bevery\s?day\b|\bdaily\b/)) return {rec:{freq:"daily"},consumed:m[0]};
+  if(m=t.match(/\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)((?:\s*(?:,|and)\s*(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday))*)\b/)){
+    const days=[];
+    (m[0].match(/sunday|monday|tuesday|wednesday|thursday|friday|saturday/g)||[]).forEach(w=>{
+      const i=DOW.findIndex(d=>d.toLowerCase()===w); if(!days.includes(i))days.push(i);
+    });
+    return {rec:{freq:"weekly",days},consumed:m[0]};
+  }
+  if(m=t.match(/\bevery\s+week\b|\bweekly\b/)) return {rec:{freq:"weekly"},consumed:m[0]};
+  if(m=t.match(/\bevery\s+month\b|\bmonthly\b/)) return {rec:{freq:"monthly"},consumed:m[0]};
+  return null;
+}
+function cleanTitle(s){
+  return s.replace(/\b(on|at|for|in|the|a|an|to|my|me|please)\s*$/gi,"")
+          .replace(/^\s*(to|for|about)\s+/i,"")
+          .replace(/\s{2,}/g," ").trim()
+          .replace(/^\w/,c=>c.toUpperCase());
+}
+
+/* command → intent */
+function parseCommand(raw){
+  let text=normalizeNums(raw.trim());
+  const low=text.toLowerCase();
+
+  // --- queries ---
+  if(/^(what'?s?|whats)\s+(on\s+)?(my\s+)?(schedule|calendar|agenda)/.test(low) || /^read\s+(my\s+)?(day|agenda|schedule|calendar)/.test(low) || /^what'?s?\s+(on\s+)?today\b/.test(low)){
+    const d=parseDateToken(low);
+    return {kind:"query-agenda", date:d?d.date:todayStr()};
+  }
+  if(/^what'?s?\s+(on|happening)\s+/.test(low)){
+    const d=parseDateToken(low);
+    if(d) return {kind:"query-agenda", date:d.date};
+  }
+  if(/^(read|what'?s?\s+on)\s+(my\s+)?(list|tasks|to\s?do)/.test(low)) return {kind:"query-todos"};
+
+  // --- complete todo ---
+  let m=low.match(/^(done|complete|completed|finished|check\s+off|mark\s+off)\s+(.+)$/);
+  if(m) return {kind:"complete-todo", query:m[2].trim()};
+
+  // --- delete ---
+  m=low.match(/^(delete|cancel|remove)\s+(.+)$/);
+  if(m) return {kind:"delete", query:m[2].replace(/\b(event|task|the)\b/g,"").trim()};
+
+  // --- add todo / note ---
+  m=text.match(/^(?:add\s+)?(.+?)\s+to\s+(?:my\s+)?(?:to\s?do\s+)?list$/i) || text.match(/^(?:new\s+)?(?:task|todo|to\s?do|note|remember)[:\s]+(.+)$/i);
+  if(m){
+    let body=m[1];
+    const d=parseDateToken(body);
+    if(d) body=body.replace(d.consumed,"");
+    return {kind:"add-todo", title:cleanTitle(body), due:d?d.date:null};
+  }
+
+  // --- reminders / events (default add path) ---
+  let working=text.replace(/^(add|schedule|create|new|set|put|book)\s+(an?\s+)?(event\s+|appointment\s+)?/i,"")
+                  .replace(/^remind\s+me\s+(to|about|of)?\s*/i,"");
+  // explicit reminder lead: "remind me 30 minutes before"
+  let rem=null;
+  m=working.match(/remind(?:\s+me)?\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\s*(?:before|prior|ahead)?/i);
+  if(m){ rem = /hour|hr/.test(m[2])? Number(m[1])*60 : Number(m[1]); working=working.replace(m[0],""); }
+  else if(/with\s+(a\s+)?reminder/i.test(working)){ rem=Number(settings.defRem||15); working=working.replace(/with\s+(a\s+)?reminder/i,""); }
+
+  const recR=parseRecurrence(working);
+  if(recR) working=working.replace(recR.consumed,"");
+
+  const dR=parseDateToken(working);
+  if(dR) working=working.replace(new RegExp("\\b(on\\s+)?"+dR.consumed.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","i"),"");
+
+  let time=null;
+  m=working.match(/\b(?:at|@)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
+  if(!m) m=working.match(/\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b/i);
+  if(m){ time=parseTimeToken(m[1]); if(time) working=working.replace(m[0],""); }
+
+  const title=cleanTitle(working);
+  if(!title) return {kind:"unknown", raw};
+
+  // bare "remind me to X" with no date/time → todo
+  if(/^remind\s+me/i.test(text) && !dR && !time && !recR){
+    return {kind:"add-todo", title, due:null};
+  }
+  return {
+    kind:"add-event", title,
+    date: dR? dR.date : todayStr(),
+    time, rec: recR? recR.rec : null,
+    rem: rem!=null? rem : (time? (settings.defRem===""?null:Number(settings.defRem)) : null)
+  };
+}
+
+/* find best match by title */
+function findByTitle(list, q){
+  q=q.toLowerCase();
+  let hit=list.find(x=>x.title.toLowerCase()===q);
+  if(hit) return hit;
+  hit=list.find(x=>x.title.toLowerCase().includes(q)||q.includes(x.title.toLowerCase()));
+  return hit||null;
+}
+
+/* =============== execute intents =============== */
+function describeIntent(it){
+  switch(it.kind){
+    case "add-event":{
+      const bits=[niceDate(it.date)];
+      if(it.time)bits.push(niceTime(it.time));
+      if(it.rec)bits.push(it.rec.freq==="weekly"&&it.rec.days? "every "+it.rec.days.map(d=>DOW_S[d]).join(", ") : "every "+({daily:"day",weekly:"week",monthly:"month"})[it.rec.freq]);
+      if(it.rem!=null)bits.push(`⏱ ${it.rem===0?"at time":it.rem>=60?(it.rem/60)+" hr before":it.rem+" min before"}`);
+      return {kind:"New event", main:it.title, sub:bits.join(" · ")};
+    }
+    case "add-todo": return {kind:"New task", main:it.title, sub:it.due? "Due "+niceDate(it.due):"No due date"};
+    case "complete-todo": return {kind:"Complete task", main:it.query, sub:""};
+    case "delete": return {kind:"Delete", main:it.query, sub:"Removes matching event or task"};
+    default: return null;
+  }
+}
+function executeIntent(it){
+  switch(it.kind){
+    case "add-event":{
+      events.push({id:uid(),title:it.title,date:it.date,time:it.time,rec:it.rec,rem:it.rem==null?"":String(it.rem),notes:""});
+      save(LS.events,events); render();
+      speak(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`);
+      return true;
+    }
+    case "add-todo":{
+      todos.push({id:uid(),title:it.title,due:it.due,done:false});
+      save(LS.todos,todos); render();
+      speak(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`);
+      return true;
+    }
+    case "complete-todo":{
+      const t=findByTitle(todos.filter(x=>!x.done), it.query);
+      if(!t){ speak(`I couldn't find ${it.query} on your list.`); return false; }
+      t.done=true; save(LS.todos,todos); render();
+      speak(`${t.title}. Done. The list is satisfied, for now.`);
+      return true;
+    }
+    case "delete":{
+      const t=findByTitle(todos,it.query);
+      if(t){ todos=todos.filter(x=>x.id!==t.id); save(LS.todos,todos); render(); speak(`Deleted task ${t.title}.`); return true; }
+      const e=findByTitle(events,it.query);
+      if(e){ events=events.filter(x=>x.id!==e.id); save(LS.events,events); render(); speak(`Deleted event ${e.title}.`); return true; }
+      speak(`Nothing named ${it.query} to delete.`); return false;
+    }
+    case "query-agenda": readAgenda(it.date); return true;
+    case "query-todos": readTodos(); return true;
+    default:
+      speak("I didn't catch a command in that. Try, add dentist Tuesday at 3 PM.");
+      return false;
+  }
+}
+function readAgenda(dateStr){
+  const evs=eventsOn(dateStr), tds=todosOn(dateStr);
+  const label=niceDate(dateStr).toLowerCase()==="today"?"today":niceDate(dateStr);
+  if(!evs.length && !tds.length){ speak(`Nothing scheduled ${label}. The void is quiet.`,true); return; }
+  let parts=[`${label}: ${evs.length} event${evs.length!==1?"s":""}${tds.length? " and "+tds.length+" task"+(tds.length!==1?"s":""):""}.`];
+  evs.forEach(e=>parts.push(`${e.title}${e.time? " at "+spokenTime(e.time):""}.`));
+  tds.forEach(t=>parts.push(`Task: ${t.title}.`));
+  speak(parts.join(" "),true);
+}
+function readTodos(){
+  const open=todos.filter(t=>!t.done);
+  if(!open.length){ speak("Your list is empty. Suspiciously empty.",true); return; }
+  speak(`${open.length} open task${open.length!==1?"s":""}. `+open.map(t=>t.title).join(". ")+".",true);
+}
+
+/* =============== rendering =============== */
+const $=s=>document.querySelector(s);
+function renderHeader(){
+  const d=new Date();
+  $("#headerDate").textContent=`${DOW_S[d.getDay()]} · ${MON[d.getMonth()].slice(0,3)} ${d.getDate()}`;
+}
+function agendaItemHTML(e,dateStr){
+  const now=new Date(); const isToday=dateStr===todayStr();
+  let past=false;
+  if(isToday && e.time){ const[h,m]=e.time.split(":").map(Number); past = now.getHours()*60+now.getMinutes() > h*60+m+ (e.dur||60); }
+  const rec=e.rec? `<span class="rec">↻ ${e.rec.freq==="weekly"&&e.rec.days?e.rec.days.map(d=>DOW_S[d]).join("/"):e.rec.freq}</span>`:"";
+  const rem=(e.rem!==""&&e.rem!=null)? `<span class="rem">⏱ ${e.rem==="0"?"at time":Number(e.rem)>=60?(Number(e.rem)/60)+"h before":e.rem+"m before"}</span>`:"";
+  const notes=e.notes? `<span>${esc(e.notes)}</span>`:"";
+  return `<div class="agenda-item ${past?"past":""}" data-ev="${e.id}" data-date="${dateStr}">
+    <div class="agenda-time ${e.time?"":"allday"}">${e.time?niceTime(e.time):"all day"}</div>
+    <div class="agenda-body"><div class="agenda-title">${esc(e.title)}</div>
+    <div class="agenda-meta">${rec}${rem}${notes}</div></div></div>`;
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c])}
+function renderToday(){
+  const t=todayStr();
+  const d=new Date();
+  $("#todaySub").textContent=`${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
+  const evs=eventsOn(t), tds=todosOn(t), overdue=todos.filter(x=>!x.done&&x.due&&x.due<t);
+  let html="";
+  if(!evs.length&&!tds.length&&!overdue.length){
+    html=`<div class="empty-state"><div class="es-glyph">﴾ ﴿</div><p>Nothing scheduled. The void is quiet.<br>Tap the orb and speak.</p></div>`;
+  }else{
+    html+=evs.map(e=>agendaItemHTML(e,t)).join("");
+    if(tds.length||overdue.length){
+      html+=`<div class="section-label">Tasks due</div>`;
+      html+=overdue.map(x=>todoRowHTML(x,true)).join("")+tds.map(x=>todoRowHTML(x)).join("");
+    }
+  }
+  $("#todayList").innerHTML=html;
+}
+function todoRowHTML(x,over){
+  return `<div class="todo-item ${x.done?"done":""}" data-todo="${x.id}">
+    <button class="todo-check" data-check="${x.id}">${x.done?"✓":""}</button>
+    <div class="todo-body"><div class="todo-title">${esc(x.title)}</div>
+    ${x.due?`<div class="todo-due ${(!x.done&&x.due<todayStr())?"overdue":""}">${(!x.done&&x.due<todayStr())?"overdue · ":""}${niceDate(x.due)}</div>`:""}</div>
+    <button class="icon-del" data-del="${x.id}">✕</button></div>`;
+}
+function renderTodos(){
+  const open=todos.filter(t=>!t.done).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
+  const done=todos.filter(t=>t.done);
+  let html=open.map(x=>todoRowHTML(x)).join("");
+  if(!open.length) html=`<div class="empty-state"><div class="es-glyph">﴾ ﴿</div><p>The list is empty. It hungers.</p></div>`;
+  if(done.length) html+=`<div class="section-label">Done (${done.length})</div>`+done.slice(-12).reverse().map(x=>todoRowHTML(x)).join("");
+  $("#todoList").innerHTML=html;
+}
+let calCursor=new Date(); calCursor.setDate(1);
+let selectedDay=todayStr();
+function renderCal(){
+  $("#calMonthLabel").textContent=`${MON[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+  let html=DOW_S.map(d=>`<div class="cal-dow">${d[0]}</div>`).join("");
+  const first=new Date(calCursor), startDow=first.getDay();
+  const gridStart=new Date(first); gridStart.setDate(1-startDow);
+  for(let i=0;i<42;i++){
+    const d=new Date(gridStart); d.setDate(gridStart.getDate()+i);
+    const ds=ymd(d);
+    const other=d.getMonth()!==calCursor.getMonth();
+    const evs=eventsOn(ds), tds=todosOn(ds);
+    const dots = (evs.length?'<span class="cal-dot"></span>':'') + (tds.length?'<span class="cal-dot t"></span>':'');
+    html+=`<button class="cal-cell ${other?"other":""} ${ds===todayStr()?"today":""} ${ds===selectedDay?"selected":""}" data-day="${ds}">
+      ${d.getDate()}<span class="cal-dots">${dots}</span></button>`;
+  }
+  $("#calGrid").innerHTML=html;
+  $("#dayPanelLabel").textContent=niceDate(selectedDay);
+  const evs=eventsOn(selectedDay), tds=todosOn(selectedDay);
+  let ph=evs.map(e=>agendaItemHTML(e,selectedDay)).join("")+tds.map(x=>todoRowHTML(x)).join("");
+  if(!ph) ph=`<div class="empty-state" style="padding:18px"><p>Nothing here.</p></div>`;
+  $("#dayPanelList").innerHTML=ph;
+}
+function render(){ renderHeader(); renderToday(); renderTodos(); renderCal(); }
+
+/* =============== sheets =============== */
+const backdrop=$("#backdrop");
+let openSheet=null;
+function show(id){
+  if(openSheet) document.getElementById(openSheet).classList.remove("open");
+  openSheet=id; backdrop.classList.add("open");
+  document.getElementById(id).classList.add("open");
+}
+function hideSheets(){
+  if(openSheet) document.getElementById(openSheet).classList.remove("open");
+  openSheet=null; backdrop.classList.remove("open");
+  stopListening();
+}
+backdrop.onclick=hideSheets;
+
+/* ---------- event sheet ---------- */
+let editingId=null;
+const dayChips=$("#evDayChips");
+DOW_S.forEach((d,i)=>{
+  const c=document.createElement("button"); c.className="chip"; c.textContent=d; c.dataset.d=i;
+  c.onclick=()=>c.classList.toggle("on");
+  dayChips.appendChild(c);
+});
+$("#evFreq").onchange=e=>{
+  $("#evDaysField").style.display = e.target.value==="weekly"?"block":"none";
+  $("#evUntilField").style.display = e.target.value?"block":"none";
+};
+function openEventSheet(ev,dateStr){
+  editingId=ev?ev.id:null;
+  $("#eventSheetTitle").textContent=ev?"Edit event":"New event";
+  $("#evTitle").value=ev?ev.title:"";
+  $("#evDate").value=ev?ev.date:(dateStr||selectedDay||todayStr());
+  $("#evTime").value=ev?(ev.time||""):"";
+  $("#evFreq").value=ev&&ev.rec?ev.rec.freq:"";
+  $("#evRem").value=ev?(ev.rem??""):"";
+  $("#evUntil").value=ev&&ev.rec&&ev.rec.until?ev.rec.until:"";
+  $("#evNotes").value=ev?(ev.notes||""):"";
+  dayChips.querySelectorAll(".chip").forEach(c=>c.classList.toggle("on", !!(ev&&ev.rec&&ev.rec.days&&ev.rec.days.includes(Number(c.dataset.d)))));
+  $("#evDaysField").style.display = (ev&&ev.rec&&ev.rec.freq==="weekly")?"block":"none";
+  $("#evUntilField").style.display = (ev&&ev.rec)?"block":"none";
+  $("#evDelete").style.display = ev?"block":"none";
+  show("eventSheet");
+}
+$("#evSave").onclick=()=>{
+  const title=$("#evTitle").value.trim();
+  if(!title||!$("#evDate").value) return;
+  const freq=$("#evFreq").value;
+  let rec=null;
+  if(freq){
+    rec={freq};
+    if(freq==="weekly"){
+      const days=[...dayChips.querySelectorAll(".chip.on")].map(c=>Number(c.dataset.d));
+      if(days.length)rec.days=days;
+    }
+    if($("#evUntil").value)rec.until=$("#evUntil").value;
+  }
+  const data={title,date:$("#evDate").value,time:$("#evTime").value||null,rec,rem:$("#evRem").value,notes:$("#evNotes").value.trim()};
+  if(editingId){ const e=events.find(x=>x.id===editingId); Object.assign(e,data); }
+  else events.push(Object.assign({id:uid()},data));
+  save(LS.events,events); render(); hideSheets();
+};
+$("#evDelete").onclick=()=>{
+  events=events.filter(x=>x.id!==editingId); save(LS.events,events); render(); hideSheets();
+};
+$("#addEventBtn").onclick=()=>openEventSheet(null,selectedDay);
+
+/* ---------- settings sheet ---------- */
+function syncSettingsUI(){
+  $("#tglHandsFree").classList.toggle("on",settings.handsFree);
+  $("#tglAnnounce").classList.toggle("on",settings.announce);
+  $("#tglConfirm").classList.toggle("on",settings.confirm);
+  $("#rngRate").value=settings.rate;
+  $("#selDefRem").value=settings.defRem;
+}
+$("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();show("settingsSheet");
+  if("Notification" in window && Notification.permission==="default"){try{Notification.requestPermission()}catch(e){}}
+};
+$("#tglHandsFree").onclick=e=>{settings.handsFree=!settings.handsFree;save(LS.settings,settings);syncSettingsUI()};
+$("#tglAnnounce").onclick=e=>{settings.announce=!settings.announce;save(LS.settings,settings);syncSettingsUI()};
+$("#tglConfirm").onclick=e=>{settings.confirm=!settings.confirm;save(LS.settings,settings);syncSettingsUI()};
+$("#rngRate").oninput=e=>{settings.rate=Number(e.target.value);save(LS.settings,settings)};
+$("#selDefRem").onchange=e=>{settings.defRem=e.target.value;save(LS.settings,settings)};
+$("#testVoice").onclick=()=>{unlockVoice();speak("Specter online. I hear you through the glasses.",true)};
+$("#btnExport").onclick=()=>{
+  const blob=new Blob([JSON.stringify({events,todos,settings},null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="specter-backup.json";a.click();
+};
+$("#btnImport").onclick=()=>$("#fileImport").click();
+$("#fileImport").onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{
+    const d=JSON.parse(r.result);
+    if(d.events)events=d.events; if(d.todos)todos=d.todos; if(d.settings)settings=Object.assign(settings,d.settings);
+    save(LS.events,events);save(LS.todos,todos);save(LS.settings,settings);render();hideSheets();
+  }catch(err){alert("That file didn't parse. Import needs a SPECTER export.")}};
+  r.readAsText(f);
+};
+
+/* =============== voice UI =============== */
+const orb=$("#orb");
+const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, listening=false, pendingIntent=null;
+let vsMode="command"; // "command" | "confirm"
+let silenceCount=0;
+const STOP_RX=/^(stop( listening)?|goodbye|good bye|that'?s all|that is all|close|exit|quit|dismiss|nothing)\.?$/i;
+const YES_RX=/^(yes|yeah|yep|yup|confirm|correct|do it|sure|go ahead|affirmative|ok(ay)?)\b/i;
+const NO_RX=/^(no|nope|cancel|never\s?mind|nevermind|wrong|negative|don'?t)\b/i;
+function setVSState(s){$("#vsState").textContent=s}
+function openVoice(){
+  unlockVoice();
+  pendingIntent=null; vsMode="command"; silenceCount=0;
+  $("#vsResult").style.display="none";$("#vsActions").style.display="none";
+  $("#vsTranscript").innerHTML=SR? '<span class="hint">Listening… speak through your glasses.</span>':'<span class="hint">Voice input isn\'t available in this browser — type a command below.</span>';
+  show("voiceSheet");
+  if(SR) startListening();
+}
+function rearm(){
+  // chain the next listen if hands-free session is still open
+  if(settings.handsFree && openSheet==="voiceSheet" && !listening) startListening();
+}
+function startListening(){
+  if(!SR||listening)return;
+  try{
+    rec=new SR();
+    rec.lang="en-US"; rec.interimResults=true; rec.maxAlternatives=1;
+    listening=true;
+    orb.classList.add("listening"); $("#vsMicBtn").classList.add("listening");
+    setVSState("listening");
+    let final="";
+    rec.onresult=e=>{
+      let interim="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal) final+=e.results[i][0].transcript;
+        else interim+=e.results[i][0].transcript;
+      }
+      $("#vsTranscript").textContent=(final||interim)||"…";
+    };
+    rec.onend=()=>{
+      listening=false;
+      orb.classList.remove("listening");$("#vsMicBtn").classList.remove("listening");
+      if(final.trim()){ setVSState("…"); handleUtterance(final.trim()); }
+      else if(settings.handsFree && openSheet==="voiceSheet" && silenceCount<1){
+        silenceCount++; setVSState("still listening…"); startListening();
+      }
+      else setVSState(settings.handsFree? "session paused — tap mic":"idle");
+    };
+    rec.onerror=ev=>{
+      listening=false;
+      orb.classList.remove("listening");$("#vsMicBtn").classList.remove("listening");
+      setVSState(ev.error==="not-allowed"?"mic permission denied":"idle");
+    };
+    rec.start();
+  }catch(e){listening=false;setVSState("idle")}
+}
+function stopListening(){ if(rec&&listening){try{rec.stop()}catch(e){}} }
+$("#vsMicBtn").onclick=()=>{ listening? stopListening() : (pendingIntent=null,vsMode="command",silenceCount=0,$("#vsResult").style.display="none",$("#vsActions").style.display="none",startListening()); };
+orb.onclick=openVoice;
+function handleUtterance(text){
+  silenceCount=0;
+  $("#vsTranscript").textContent="“"+text+"”";
+  // spoken yes/no when a command is awaiting confirmation
+  if(vsMode==="confirm" && pendingIntent){
+    if(YES_RX.test(text)){ confirmPending(); return; }
+    if(NO_RX.test(text)){ cancelPending(); return; }
+    // anything else: treat as a fresh command
+    cancelPending(true); // silent cancel, fall through
+  }
+  vsMode="command";
+  if(STOP_RX.test(text.trim())){
+    speak("Closing. I'll be here.",true);
+    hideSheets(); return;
+  }
+  const it=parseCommand(text);
+  if(["query-agenda","query-todos"].includes(it.kind)){
+    setVSState("speaking…");
+    afterTTS=rearm;            // listen again after reading it out
+    executeIntent(it); return;
+  }
+  if(it.kind==="unknown"){
+    setVSState("didn't parse — try again");
+    afterTTS=rearm;
+    executeIntent(it); return;
+  }
+  const d=describeIntent(it);
+  pendingIntent=it; vsMode="confirm";
+  $("#rKind").textContent=d.kind; $("#rMain").textContent=d.main; $("#rSub").textContent=d.sub;
+  $("#vsResult").style.display="block"; $("#vsActions").style.display="flex";
+  setVSState("say “yes” or “no”");
+  if(settings.handsFree || settings.confirm){
+    afterTTS = settings.handsFree ? ()=>{ if(vsMode==="confirm") startListening(); } : null;
+    speak(`${d.kind}: ${d.main}. ${d.sub?d.sub.replace(/·/g,",").replace(/⏱/g,"reminder"):""} Yes or no?`,true);
+  }
+}
+function confirmPending(){
+  const it=pendingIntent; pendingIntent=null; vsMode="command";
+  $("#vsResult").style.display="none";$("#vsActions").style.display="none";
+  if(settings.handsFree){
+    setVSState("done — next command?");
+    $("#vsTranscript").innerHTML='<span class="hint">Added. Say the next command, or “that’s all.”</span>';
+    afterTTS=rearm;
+    executeIntent(it);
+  }else{
+    executeIntent(it); hideSheets();
+  }
+}
+function cancelPending(silent){
+  pendingIntent=null; vsMode="command";
+  $("#vsResult").style.display="none";$("#vsActions").style.display="none";
+  if(silent) return;
+  $("#vsTranscript").innerHTML='<span class="hint">Cancelled. Say another command, or “that’s all.”</span>';
+  if(settings.handsFree){ setVSState("cancelled — listening"); afterTTS=rearm; speak("Cancelled.",true); }
+  else setVSState("cancelled");
+}
+$("#vsConfirm").onclick=()=>confirmPending();
+$("#vsCancel").onclick=()=>cancelPending();
+$("#vsTextGo").onclick=()=>{const v=$("#vsText").value.trim(); if(v){$("#vsText").value="";handleUtterance(v);}};
+$("#vsText").addEventListener("keydown",e=>{if(e.key==="Enter")$("#vsTextGo").click()});
+
+/* =============== tabs & list interactions =============== */
+document.querySelectorAll(".tab[data-view]").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    $("#view-"+t.dataset.view).classList.add("active");
+  };
+});
+$("#tabSpeak").onclick=()=>{unlockVoice();readAgenda(todayStr());};
+document.addEventListener("click",e=>{
+  const chk=e.target.closest("[data-check]");
+  if(chk){const t=todos.find(x=>x.id===chk.dataset.check); if(t){t.done=!t.done;save(LS.todos,todos);render();} return;}
+  const del=e.target.closest("[data-del]");
+  if(del){todos=todos.filter(x=>x.id!==del.dataset.del);save(LS.todos,todos);render();return;}
+  const cell=e.target.closest("[data-day]");
+  if(cell){selectedDay=cell.dataset.day;renderCal();return;}
+  const evEl=e.target.closest("[data-ev]");
+  if(evEl){const ev=events.find(x=>x.id===evEl.dataset.ev); if(ev)openEventSheet(ev);return;}
+});
+$("#calPrev").onclick=()=>{calCursor.setMonth(calCursor.getMonth()-1);renderCal()};
+$("#calNext").onclick=()=>{calCursor.setMonth(calCursor.getMonth()+1);renderCal()};
+$("#quickTodoBtn").onclick=addQuickTodo;
+$("#quickTodo").addEventListener("keydown",e=>{if(e.key==="Enter")addQuickTodo()});
+function addQuickTodo(){
+  let v=$("#quickTodo").value.trim(); if(!v)return;
+  const d=parseDateToken(v);
+  if(d)v=v.replace(d.consumed,"");
+  todos.push({id:uid(),title:cleanTitle(v),due:d?d.date:null,done:false});
+  save(LS.todos,todos); $("#quickTodo").value=""; render();
+}
+
+/* midnight rollover + resume */
+let lastDay=todayStr();
+setInterval(()=>{ if(todayStr()!==lastDay){lastDay=todayStr();render();} },30000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();} });
+
+render();
+checkReminders();
+</script>
+</body>
+</html>
