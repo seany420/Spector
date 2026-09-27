@@ -450,7 +450,7 @@ nav{
     </select>
   </div>
   <div class="set-row" style="display:block">
-    <div class="s-label">Cloud sync (for morning brief)</div>
+    <div class="s-label">Cloud sync (morning brief + Outlook feed)</div>
     <div class="s-sub" style="margin-bottom:10px">Publishes events + tasks to a small public GitHub repo (raw.githubusercontent.com — gists get blocked by GitHub's own robots rules) so Claude / Cowork can read them. Needs a classic token with only the “public_repo” scope: github.com → Settings → Developer settings → Personal access tokens.</div>
     <div class="s-sub" style="margin-bottom:10px;color:var(--ember)">This repo is genuinely public — visible in your repo list, not just obscure. Fine for appointment titles and tasks. Nothing that could identify a patient or client, ever.</div>
     <input type="password" id="ghToken" placeholder="GitHub token (ghp_…)" autocomplete="off" style="width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;color:var(--bone);font-size:14px;font-family:var(--mono);margin-bottom:8px">
@@ -465,6 +465,23 @@ nav{
         <input id="syncUrl" readonly style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--ecto);font-size:11px;font-family:var(--mono)">
         <button class="btn btn-ghost" id="btnCopyUrl" style="margin:0;width:auto;padding:9px 14px">Copy</button>
       </div>
+    </div>
+  </div>
+  <div class="set-row" style="display:block">
+    <div class="s-label">Outlook calendar</div>
+    <div class="s-sub" style="margin-bottom:10px">One-time: download a .ics file and import it. Live: with Cloud sync on, SPECTER also publishes <b>specter.ics</b> — subscribe to that URL in Outlook and it keeps itself updated (Outlook refreshes every ~3 hours).</div>
+    <div class="set-row" style="border:none;padding:4px 0 10px">
+      <div><div class="s-label" style="font-size:14px">Include tasks with due dates</div><div class="s-sub">Shown as all-day “☐” items</div></div>
+      <div class="toggle" id="tglIcsTasks"></div>
+    </div>
+    <button class="btn btn-ghost" id="btnExportIcs" style="margin:0">Download .ics</button>
+    <div id="icsUrlRow" style="display:none;margin-top:10px">
+      <div class="s-sub">Outlook subscribe URL (Add calendar → Subscribe from web):</div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <input id="icsUrl" readonly style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--ecto);font-size:11px;font-family:var(--mono)">
+        <button class="btn btn-ghost" id="btnCopyIcs" style="margin:0;width:auto;padding:9px 14px">Copy</button>
+      </div>
+      <div class="s-sub" id="icsUrlNote" style="margin-top:6px"></div>
     </div>
   </div>
   <div class="set-row">
@@ -887,6 +904,112 @@ function readTodos(){
   speak(`${open.length} open task${open.length!==1?"s":""}. `+open.map(t=>t.title).join(". ")+".",true);
 }
 
+/* =============== ICS export (Outlook / Apple / Google) =============== */
+const ICS_PATH="specter.ics";
+function icsEsc(s){ return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
+function icsFold(line){
+  // RFC 5545: lines max 75 octets; continuation lines start with a space
+  const enc=new TextEncoder(); let out="", cur="", bytes=0, limit=75;
+  for(const ch of line){
+    const b=enc.encode(ch).length;
+    if(bytes+b>limit){ out+=cur+"\r\n "; cur=""; bytes=0; limit=74; }
+    cur+=ch; bytes+=b;
+  }
+  return out+cur;
+}
+const icsDate = s=>s.replace(/-/g,"");                       // "2026-09-27" → "20260927"
+const icsLocal = d=>`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+const icsUTC = d=>d.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");
+const fmtOff = m=>{ const s=m<0?"-":"+"; m=Math.abs(m); return s+pad(Math.floor(m/60))+pad(m%60); };
+function icsTz(){
+  // Returns {tzid, block} for a timezone Outlook can honor across DST, or {tzid:null} → write UTC times.
+  let tzid="UTC"; try{ tzid=Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC"; }catch(e){}
+  const y=new Date().getFullYear();
+  const jan=-new Date(y,0,1).getTimezoneOffset(), jul=-new Date(y,6,1).getTimezoneOffset();
+  if(jan===jul){
+    return {tzid, block:["BEGIN:VTIMEZONE","TZID:"+tzid,"BEGIN:STANDARD","DTSTART:19700101T000000",
+      "TZOFFSETFROM:"+fmtOff(jan),"TZOFFSETTO:"+fmtOff(jan),"END:STANDARD","END:VTIMEZONE"]};
+  }
+  if(/^America\//.test(tzid) && jul>jan){ // US/Canada DST: 2nd Sun Mar → 1st Sun Nov
+    return {tzid, block:["BEGIN:VTIMEZONE","TZID:"+tzid,
+      "BEGIN:DAYLIGHT","DTSTART:19700308T020000","RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+      "TZOFFSETFROM:"+fmtOff(jan),"TZOFFSETTO:"+fmtOff(jul),"END:DAYLIGHT",
+      "BEGIN:STANDARD","DTSTART:19701101T020000","RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+      "TZOFFSETFROM:"+fmtOff(jul),"TZOFFSETTO:"+fmtOff(jan),"END:STANDARD","END:VTIMEZONE"]};
+  }
+  return {tzid:null, block:[]};
+}
+const ICS_BYDAY=["SU","MO","TU","WE","TH","FR","SA"];
+function buildICS(stampDate){
+  const tz=icsTz();
+  const stamp=icsUTC(stampDate||new Date());
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//SPECTER//Voice Calendar//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH",
+    "X-WR-CALNAME:SPECTER","X-WR-CALDESC:Events and tasks from SPECTER",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H","X-PUBLISHED-TTL:PT1H"];
+  if(tz.tzid){ L.push("X-WR-TIMEZONE:"+tz.tzid, ...tz.block); }
+  const dt = d => tz.tzid ? `;TZID=${tz.tzid}:${icsLocal(d)}` : `:${icsUTC(d)}`;
+  events.forEach(ev=>{
+    if(!ev||!ev.date||!ev.title) return;
+    const [Y,Mo,D]=ev.date.split("-").map(Number);
+    L.push("BEGIN:VEVENT","UID:"+ev.id+"@specter","DTSTAMP:"+stamp,"SUMMARY:"+icsEsc(ev.title));
+    let h=0,mi=0;
+    if(ev.time){
+      [h,mi]=ev.time.split(":").map(Number);
+      const start=new Date(Y,Mo-1,D,h,mi), end=new Date(Y,Mo-1,D,h,mi+(Number(ev.dur)||60));
+      L.push("DTSTART"+dt(start),"DTEND"+dt(end));
+    }else{
+      const next=new Date(Y,Mo-1,D+1);
+      L.push("DTSTART;VALUE=DATE:"+icsDate(ev.date),"DTEND;VALUE=DATE:"+icsDate(ymd(next)),"TRANSP:TRANSPARENT");
+    }
+    if(ev.rec){
+      let r="FREQ="+({daily:"DAILY",weekly:"WEEKLY",monthly:"MONTHLY"})[ev.rec.freq];
+      if(ev.rec.freq==="weekly"){
+        const days=(ev.rec.days&&ev.rec.days.length)? ev.rec.days : [new Date(Y,Mo-1,D).getDay()];
+        r+=";BYDAY="+[...days].sort().map(i=>ICS_BYDAY[i]).join(",");
+      }
+      if(ev.rec.freq==="monthly") r+=";BYMONTHDAY="+D;
+      if(ev.rec.until){
+        const [uy,um,ud]=ev.rec.until.split("-").map(Number);
+        // RFC 5545: UNTIL is UTC when DTSTART has a TZID; use end of the local day so that day's occurrence counts
+        r+=";UNTIL="+(ev.time? icsUTC(new Date(uy,um-1,ud,23,59,59)) : icsDate(ev.rec.until));
+      }
+      L.push("RRULE:"+r);
+      (ev.excluded||[]).forEach(x=>{
+        if(ev.time){ const [xy,xm,xd]=x.split("-").map(Number); L.push("EXDATE"+dt(new Date(xy,xm-1,xd,h,mi))); }
+        else L.push("EXDATE;VALUE=DATE:"+icsDate(x));
+      });
+    }
+    if(ev.notes) L.push("DESCRIPTION:"+icsEsc(ev.notes));
+    if(ev.time && ev.rem!==""&&ev.rem!=null){
+      L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(ev.title),"TRIGGER:-PT"+Number(ev.rem)+"M","END:VALARM");
+    }
+    L.push("END:VEVENT");
+  });
+  if(settings.icsTasks!==false){
+    todos.filter(t=>!t.done&&t.due).forEach(t=>{
+      const [Y,Mo,D]=t.due.split("-").map(Number);
+      L.push("BEGIN:VEVENT","UID:task-"+t.id+"@specter","DTSTAMP:"+stamp,"SUMMARY:"+icsEsc("☐ "+t.title),
+        "DTSTART;VALUE=DATE:"+icsDate(t.due),"DTEND;VALUE=DATE:"+icsDate(ymd(new Date(Y,Mo-1,D+1))),
+        "TRANSP:TRANSPARENT","CATEGORIES:SPECTER task","END:VEVENT");
+    });
+  }
+  L.push("END:VCALENDAR");
+  return L.map(icsFold).join("\r\n")+"\r\n";
+}
+async function exportICS(){
+  const text=buildICS();
+  const file=new File([text],"specter.ics",{type:"text/calendar"});
+  // iOS home-screen apps ignore <a download>; the share sheet lets you Save to Files or open in Outlook
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],title:"SPECTER calendar"}); return; }
+    catch(e){ if(e&&e.name==="AbortError") return; }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download="specter.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function hashStr(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return (h>>>0).toString(36); }
+
 /* =============== cloud sync (public GitHub repo, raw.githubusercontent.com) =============== */
 let syncTimer=null;
 const SYNC_PATH="specter-data.json";
@@ -896,10 +1019,26 @@ function syncUrlFor(){
   if(!settings.repoOwner||!settings.repoName||!settings.repoBranch) return "";
   return `https://raw.githubusercontent.com/${settings.repoOwner}/${settings.repoName}/${settings.repoBranch}/${SYNC_PATH}`;
 }
+function icsUrlFor(){
+  if(settings.pagesBase) return settings.pagesBase.replace(/\/?$/,"/")+ICS_PATH;
+  if(!settings.repoOwner||!settings.repoName||!settings.repoBranch) return "";
+  return `https://raw.githubusercontent.com/${settings.repoOwner}/${settings.repoName}/${settings.repoBranch}/${ICS_PATH}`;
+}
 function refreshSyncUI(){
   const url=syncUrlFor();
   const row=document.getElementById("syncUrlRow");
   if(row){ row.style.display=url?"block":"none"; if(url)document.getElementById("syncUrl").value=url; }
+  const iurl=settings.icsPushed? icsUrlFor() : "";
+  const irow=document.getElementById("icsUrlRow");
+  if(irow){
+    irow.style.display=iurl?"block":"none";
+    if(iurl){
+      document.getElementById("icsUrl").value=iurl;
+      document.getElementById("icsUrlNote").textContent = settings.pagesBase
+        ? "GitHub Pages feed (served as text/calendar). New Pages sites can take a few minutes to go live."
+        : "Raw GitHub feed. If Outlook rejects it, turn on GitHub Pages for the "+settings.repoName+" repo (Settings → Pages → Deploy from branch → main), then tap Sync now.";
+    }
+  }
   if(settings.ghToken) document.getElementById("ghToken").placeholder="Token saved ✓ (paste to replace)";
   setSyncStatus(settings.ghToken? (settings.lastSync? "last synced "+settings.lastSync : "token saved — tap Sync now") : "");
 }
@@ -932,29 +1071,56 @@ async function ensureRepo(){
   settings.repoBranch=j.default_branch||"main";
   save(LS.settings,settings);
 }
-async function syncPush(){
+async function putFile(path, text, shaKey){
+  // create-or-update one file in the sync repo; sha cached in settings[shaKey]
+  const content=b64utf8(text);
+  const base=`https://api.github.com/repos/${settings.repoOwner}/${settings.repoName}/contents/${path}`;
+  const fetchSha=async()=>{ const g=await ghFetch(base+`?ref=${settings.repoBranch}`); return g.ok? (await g.json()).sha : null; }; // 404 = first write
+  let sha=settings[shaKey] || await fetchSha();
+  const body={message:"SPECTER sync "+path+" "+new Date().toISOString(), content, branch:settings.repoBranch};
+  if(sha) body.sha=sha;
+  let res=await ghFetch(base,{method:"PUT",body:JSON.stringify(body)});
+  if(res.status===409||res.status===422){ // stale/missing sha — refetch once and retry
+    const s=await fetchSha(); if(s) body.sha=s; else delete body.sha;
+    res=await ghFetch(base,{method:"PUT",body:JSON.stringify(body)});
+  }
+  if(!res.ok) throw new Error(path+" HTTP "+res.status);
+  const rj=await res.json();
+  settings[shaKey] = (rj.content&&rj.content.sha) ? rj.content.sha : null;
+}
+async function ensurePages(){
+  // Try to serve the repo via GitHub Pages (proper text/calendar content type). Needs a token that can manage Pages;
+  // if it can't, we quietly fall back to the raw.githubusercontent.com URL.
+  if(settings.pagesBase) return;
+  if(settings.pagesTried && Date.now()-settings.pagesTried < 864e5) return;
+  settings.pagesTried=Date.now();
+  const api=`https://api.github.com/repos/${settings.repoOwner}/${settings.repoName}/pages`;
+  try{
+    let r=await ghFetch(api);
+    if(r.status===404){
+      r=await ghFetch(api,{method:"POST",body:JSON.stringify({source:{branch:settings.repoBranch,path:"/"}})});
+      if(r.status===409) r=await ghFetch(api); // already enabled
+    }
+    if(r.ok){ const j=await r.json(); settings.pagesBase=j.html_url || `https://${settings.repoOwner.toLowerCase()}.github.io/${settings.repoName}/`; }
+  }catch(e){}
+}
+async function syncPush(opts){
   if(!settings.ghToken) return;
   setSyncStatus("syncing…");
   try{
     if(!settings.repoOwner||!settings.repoBranch) await ensureRepo();
+    if(!settings.fileShas) settings.fileShas={};
+    if(settings.fileSha && !settings.dataSha) settings.dataSha=settings.fileSha; // migrate old single-file cache
     const payload={app:"SPECTER", updated:new Date().toISOString(), events, todos};
-    const content=b64utf8(JSON.stringify(payload,null,2));
-    const base=`https://api.github.com/repos/${settings.repoOwner}/${settings.repoName}/contents/${SYNC_PATH}`;
-    let sha=settings.fileSha;
-    if(!sha){
-      const g=await ghFetch(base+`?ref=${settings.repoBranch}`);
-      if(g.ok){ const gj=await g.json(); sha=gj.sha; } // 404 here just means first write
+    await putFile(SYNC_PATH, JSON.stringify(payload,null,2), "dataSha");
+    settings.fileSha=settings.dataSha;
+    // Outlook feed: only commit when calendar content actually changed (DTSTAMP excluded from the comparison)
+    const sig=hashStr(buildICS(new Date(0)));
+    if(sig!==settings.icsSig || !settings.icsPushed || (opts&&opts.force)){
+      await putFile(ICS_PATH, buildICS(), "icsSha");
+      settings.icsSig=sig; settings.icsPushed=true;
     }
-    const body={message:"SPECTER sync "+new Date().toISOString(), content, branch:settings.repoBranch};
-    if(sha) body.sha=sha;
-    let res=await ghFetch(base,{method:"PUT",body:JSON.stringify(body)});
-    if(res.status===409){ // sha moved under us — refetch once and retry
-      const g=await ghFetch(base+`?ref=${settings.repoBranch}`);
-      if(g.ok){ const gj=await g.json(); body.sha=gj.sha; res=await ghFetch(base,{method:"PUT",body:JSON.stringify(body)}); }
-    }
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const rj=await res.json();
-    settings.fileSha = (rj.content&&rj.content.sha) ? rj.content.sha : null;
+    await ensurePages();
     const now=new Date(); settings.lastSync=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
     save(LS.settings,settings);
     setSyncStatus("synced "+settings.lastSync+" ✓"); refreshSyncUI();
@@ -967,7 +1133,18 @@ document.getElementById("btnSyncEnable").onclick=()=>{
   if(v){ settings.ghToken=v; document.getElementById("ghToken").value=""; save(LS.settings,settings); }
   refreshSyncUI(); if(settings.ghToken) syncPush();
 };
-document.getElementById("btnSyncNow").onclick=()=>settings.ghToken? syncPush() : setSyncStatus("paste a token first");
+document.getElementById("btnSyncNow").onclick=()=>{ if(!settings.ghToken) return setSyncStatus("paste a token first"); settings.pagesTried=0; syncPush({force:true}); };
+document.getElementById("btnExportIcs").onclick=exportICS;
+document.getElementById("tglIcsTasks").onclick=()=>{
+  settings.icsTasks = settings.icsTasks===false; save(LS.settings,settings);
+  document.getElementById("tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
+  scheduleSync();
+};
+document.getElementById("btnCopyIcs").onclick=async()=>{
+  const el=document.getElementById("icsUrl");
+  try{ await navigator.clipboard.writeText(el.value); setSyncStatus("Outlook URL copied ✓"); }
+  catch(e){ el.select(); document.execCommand("copy"); setSyncStatus("Outlook URL copied ✓"); }
+};
 document.getElementById("btnCopyUrl").onclick=async()=>{
   try{ await navigator.clipboard.writeText(document.getElementById("syncUrl").value); setSyncStatus("URL copied ✓"); }
   catch(e){ document.getElementById("syncUrl").select(); document.execCommand("copy"); setSyncStatus("URL copied ✓"); }
@@ -1141,6 +1318,7 @@ function syncSettingsUI(){
   $("#tglConfirm").classList.toggle("on",settings.confirm);
   $("#rngRate").value=settings.rate;
   $("#selDefRem").value=settings.defRem;
+  $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
 }
 $("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();show("settingsSheet");
   if("Notification" in window && Notification.permission==="default"){try{Notification.requestPermission()}catch(e){}}
