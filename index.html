@@ -468,7 +468,27 @@ nav{
     </div>
   </div>
   <div class="set-row" style="display:block">
-    <div class="s-label">Outlook calendar</div>
+    <div class="s-label">Outlook main calendar (direct)</div>
+    <div class="s-sub" style="margin-bottom:10px">Writes SPECTER straight into your personal Outlook calendar, so Outlook and Meta AI see every event within seconds. Adds, edits, and deletes all carry over. Needs a one-time Microsoft app setup: paste its Application (client) ID below.</div>
+    <input id="olClientId" placeholder="Application (client) ID" autocomplete="off" style="width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;color:var(--bone);font-size:13px;font-family:var(--mono);margin-bottom:8px">
+    <div class="s-sub">Redirect URI to register (type: Single-page application):</div>
+    <div style="display:flex;gap:8px;margin:6px 0 10px">
+      <input id="olRedirect" readonly style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--ecto);font-size:11px;font-family:var(--mono)">
+      <button class="btn btn-ghost" id="btnCopyOlRedirect" style="margin:0;width:auto;padding:9px 14px">Copy</button>
+    </div>
+    <div class="set-row" style="border:none;padding:4px 0 10px">
+      <div><div class="s-label" style="font-size:14px">Include tasks with due dates</div><div class="s-sub">Added as all-day “☐” items</div></div>
+      <div class="toggle" id="tglOlTasks"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" id="btnOlConnect" style="margin:0;flex:1">Connect Outlook</button>
+      <button class="btn btn-ghost" id="btnOlSync" style="margin:0;flex:1;display:none">Sync now</button>
+    </div>
+    <div id="olStatus" style="font-size:12px;color:var(--bone-dim);margin-top:8px;font-family:var(--mono)"></div>
+    <button class="btn btn-ghost" id="btnOlDisconnect" style="margin:8px 0 0;display:none;font-size:12px;padding:8px">Disconnect Outlook</button>
+  </div>
+  <div class="set-row" style="display:block">
+    <div class="s-label">Outlook calendar (file / feed)</div>
     <div class="s-sub" style="margin-bottom:10px">One-time: download a .ics file and import it. Live: with Cloud sync on, SPECTER also publishes <b>specter.ics</b> — subscribe to that URL in Outlook and it keeps itself updated (Outlook refreshes every ~3 hours).</div>
     <div class="set-row" style="border:none;padding:4px 0 10px">
       <div><div class="s-label" style="font-size:14px">Include tasks with due dates</div><div class="s-sub">Shown as all-day “☐” items</div></div>
@@ -513,7 +533,7 @@ const LS = {
   events:"specter_events", todos:"specter_todos", settings:"specter_settings", fired:"specter_fired"
 };
 const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
-const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} } };
+const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
 let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15"},load(LS.settings,{}));
@@ -1150,6 +1170,272 @@ document.getElementById("btnCopyUrl").onclick=async()=>{
   catch(e){ document.getElementById("syncUrl").select(); document.execCommand("copy"); setSyncStatus("URL copied ✓"); }
 };
 
+/* =============== Outlook direct sync (Microsoft Graph, personal accounts) ===============
+   Sign-in: OAuth 2.0 auth code + PKCE against the /consumers endpoint (SPA redirect, so the
+   token endpoint allows browser calls). Tokens live in their own localStorage key, never in
+   settings, so they stay out of JSON backups. Sync is a full reconcile of SPECTER → Outlook,
+   so anything changed while disconnected catches up on the next run. */
+const OL = {
+  auth:"https://login.microsoftonline.com/consumers/oauth2/v2.0",
+  graph:"https://graph.microsoft.com/v1.0",
+  scope:"offline_access openid profile User.Read Calendars.ReadWrite",
+  lsAuth:"specter_ol_auth", lsMap:"specter_ol_map", lsPkce:"specter_ol_pkce"
+};
+let olAuth = load(OL.lsAuth,{});     // {clientId, rt, at, atExp, who, needsReconnect, linked, lastSync}
+let olMap  = load(OL.lsMap,{});      // specterKey → {gid, sig, shape, excl[], owned}
+let olTimer=null, olRunning=false, olAgain=false;
+const olSaveAuth=()=>localStorage.setItem(OL.lsAuth,JSON.stringify(olAuth));
+const olSaveMap =()=>localStorage.setItem(OL.lsMap ,JSON.stringify(olMap));
+function olRedirectUri(){ return location.origin + location.pathname.replace(/index\.html$/,""); }
+function olStatus(s){ const el=document.getElementById("olStatus"); if(el) el.textContent=s; }
+const b64url = buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const randStr = n=>b64url(crypto.getRandomValues(new Uint8Array(n)));
+
+/* ---------- sign-in ---------- */
+async function olConnect(){
+  const cid=(document.getElementById("olClientId").value.trim() || olAuth.clientId || "");
+  if(!/^[0-9a-f-]{36}$/i.test(cid)) return olStatus("paste the Application (client) ID first (a 36-character code)");
+  if(cid!==olAuth.clientId){ olAuth={clientId:cid}; olSaveAuth(); }
+  const verifier=randStr(48), state=randStr(16);
+  const challenge=b64url(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(verifier)));
+  localStorage.setItem(OL.lsPkce,JSON.stringify({verifier,state,t:Date.now()}));
+  const q=new URLSearchParams({client_id:cid,response_type:"code",redirect_uri:olRedirectUri(),response_mode:"query",
+    scope:OL.scope,state,code_challenge:challenge,code_challenge_method:"S256"});
+  if(olAuth.who) q.set("login_hint",olAuth.who); else q.set("prompt","select_account");
+  location.href=OL.auth+"/authorize?"+q.toString();
+}
+async function olTokenRequest(params){
+  const body=new URLSearchParams(Object.assign({client_id:olAuth.clientId,scope:OL.scope},params));
+  const r=await fetch(OL.auth+"/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.access_token){ const e=new Error(j.error_description? j.error_description.split("\r\n")[0] : ("sign-in HTTP "+r.status)); e.code=j.error; throw e; }
+  olAuth.at=j.access_token; olAuth.atExp=Date.now()+(Number(j.expires_in)||3600)*1000;
+  if(j.refresh_token) olAuth.rt=j.refresh_token;
+  olAuth.needsReconnect=false; olSaveAuth();
+  return olAuth.at;
+}
+async function olHandleRedirect(){
+  const p=new URLSearchParams(location.search);
+  if(!p.has("code")&&!p.has("error")) return false;
+  const pk=load(OL.lsPkce,null); localStorage.removeItem(OL.lsPkce);
+  history.replaceState(null,"",olRedirectUri()+location.hash);
+  if(p.has("error")){ olStatus("Microsoft sign-in stopped: "+(p.get("error_description")||p.get("error")).split("\r\n")[0]); return true; }
+  if(!pk||pk.state!==p.get("state")){ olStatus("sign-in didn't match this app session — tap Connect again"); return true; }
+  try{
+    olStatus("finishing sign-in…");
+    await olTokenRequest({grant_type:"authorization_code",code:p.get("code"),redirect_uri:olRedirectUri(),code_verifier:pk.verifier});
+    try{ const me=await olGraph("GET","/me?$select=displayName,userPrincipalName,mail"); olAuth.who=me.userPrincipalName||me.mail||""; olAuth.name=me.displayName||""; olSaveAuth(); }catch(e){}
+    refreshOlUI(); olSync();
+  }catch(e){ olStatus("sign-in failed: "+e.message); }
+  return true;
+}
+async function olToken(){
+  if(olAuth.at && olAuth.atExp-60000>Date.now()) return olAuth.at;
+  if(!olAuth.rt){ const e=new Error("not connected"); e.code="reconnect"; throw e; }
+  try{ return await olTokenRequest({grant_type:"refresh_token",refresh_token:olAuth.rt}); }
+  catch(e){
+    if(e.code==="invalid_grant"||e.code==="interaction_required"){ olAuth.rt=null; olAuth.at=null; olAuth.needsReconnect=true; olSaveAuth(); e.code="reconnect"; }
+    throw e;
+  }
+}
+
+/* ---------- Graph calls ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function olGraph(method,path,body,headers){
+  for(let attempt=0; attempt<4; attempt++){
+    const tok=await olToken();
+    const h=Object.assign({"Authorization":"Bearer "+tok},headers||{});
+    if(body) h["Content-Type"]="application/json";
+    const r=await fetch(path.startsWith("http")?path:OL.graph+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+    if(r.status===401 && attempt===0){ olAuth.at=null; continue; }
+    if(r.status===429||r.status===503||r.status===504){ await sleep((Number(r.headers.get("Retry-After"))||2)*1000); continue; }
+    if(r.status===204) return null;
+    const j=await r.json().catch(()=>null);
+    if(!r.ok){ const e=new Error((j&&j.error&&j.error.message)||("Outlook HTTP "+r.status)); e.status=r.status; throw e; }
+    return j;
+  }
+  throw new Error("Outlook is busy — try again in a minute");
+}
+
+/* ---------- SPECTER → Graph event shape ---------- */
+const WIN_TZ={"America/Los_Angeles":"Pacific Standard Time","America/Denver":"Mountain Standard Time","America/Phoenix":"US Mountain Standard Time",
+  "America/Chicago":"Central Standard Time","America/New_York":"Eastern Standard Time","America/Anchorage":"Alaskan Standard Time",
+  "Pacific/Honolulu":"Hawaiian Standard Time","America/Halifax":"Atlantic Standard Time","Europe/London":"GMT Standard Time","UTC":"UTC"};
+function olTz(){ let t="UTC"; try{ t=Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC"; }catch(e){} return WIN_TZ[t]||t; }
+const GRAPH_DAYS=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+const localISO = d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+function olEventBody(ev){
+  const tz=olTz(); let [Y,Mo,D]=ev.date.split("-").map(Number);
+  let days=null;
+  if(ev.rec && ev.rec.freq==="weekly"){
+    days=(ev.rec.days&&ev.rec.days.length)? [...ev.rec.days].sort() : [new Date(Y,Mo-1,D).getDay()];
+    // Outlook's first occurrence must fall on a pattern day; move the start forward to the first one
+    let s=new Date(Y,Mo-1,D), guard=0; while(!days.includes(s.getDay()) && guard++<7) s.setDate(s.getDate()+1);
+    Y=s.getFullYear(); Mo=s.getMonth()+1; D=s.getDate();
+  }
+  const startDate=`${Y}-${pad(Mo)}-${pad(D)}`;
+  const b={subject:ev.title, body:{contentType:"text",content:ev.notes||""}};
+  if(ev.time){
+    const [h,mi]=ev.time.split(":").map(Number);
+    b.isAllDay=false; b.showAs="busy";
+    b.start={dateTime:localISO(new Date(Y,Mo-1,D,h,mi)),timeZone:tz};
+    b.end  ={dateTime:localISO(new Date(Y,Mo-1,D,h,mi+(Number(ev.dur)||60))),timeZone:tz};
+    const rem=(ev.rem!==""&&ev.rem!=null)? Number(ev.rem) : null;
+    b.isReminderOn=rem!=null && !isNaN(rem); if(b.isReminderOn) b.reminderMinutesBeforeStart=rem;
+  }else{
+    b.isAllDay=true; b.showAs="free"; b.isReminderOn=false;
+    b.start={dateTime:startDate+"T00:00:00",timeZone:tz};
+    b.end  ={dateTime:localISO(new Date(Y,Mo-1,D+1))  ,timeZone:tz};
+  }
+  if(ev.rec){
+    const f=ev.rec.freq, pat={type:"daily",interval:1};
+    if(f==="weekly") Object.assign(pat,{type:"weekly",daysOfWeek:days.map(i=>GRAPH_DAYS[i]),firstDayOfWeek:"sunday"});
+    if(f==="monthly") Object.assign(pat,{type:"absoluteMonthly",dayOfMonth:D});
+    const range = ev.rec.until ? {type:"endDate",startDate,endDate:ev.rec.until,recurrenceTimeZone:tz}
+                               : {type:"noEnd",startDate,recurrenceTimeZone:tz};
+    b.recurrence={pattern:pat,range};
+  }
+  return b;
+}
+function olTaskBody(t){
+  const [Y,Mo,D]=t.due.split("-").map(Number);
+  return {subject:"☐ "+t.title, body:{contentType:"text",content:"SPECTER task"}, isAllDay:true, showAs:"free", isReminderOn:false,
+    start:{dateTime:t.due+"T00:00:00",timeZone:olTz()}, end:{dateTime:localISO(new Date(Y,Mo-1,D+1)),timeZone:olTz()}};
+}
+function olDesired(){
+  const out={};
+  events.forEach(ev=>{
+    if(!ev||!ev.id||!ev.date||!ev.title) return;
+    const body=olEventBody(ev);
+    const excl=body.recurrence? [...new Set(ev.excluded||[])].sort() : [];
+    out["ev:"+ev.id]={body,excl,title:ev.title,date:body.start.dateTime.slice(0,10),time:ev.time||""};
+  });
+  if(settings.olTasks!==false) todos.filter(t=>t&&!t.done&&t.due&&t.title).forEach(t=>{
+    out["task:"+t.id]={body:olTaskBody(t),excl:[],title:"☐ "+t.title,date:t.due,time:""};
+  });
+  Object.values(out).forEach(d=>{
+    const b=d.body;
+    // "shape" = anything that, if changed on a series, means rebuilding it (Outlook drops exceptions otherwise)
+    d.shape=hashStr(JSON.stringify([b.recurrence||null,b.start,b.end,b.isAllDay]));
+    d.sig=hashStr(JSON.stringify(b)+"|"+d.excl.join(","));
+  });
+  return out;
+}
+
+/* ---------- first-run matching: link to copies already in Outlook instead of duplicating ---------- */
+const olNorm=s=>String(s||"").toLowerCase().replace(/[’']/g,"'").replace(/\s+/g," ").trim();
+async function olLinkExisting(desired){
+  const keys=Object.keys(desired).filter(k=>!olMap[k]); if(!keys.length) return 0;
+  const dates=keys.map(k=>desired[k].date).sort();
+  let from=fromYMD(dates[0]); const floor=new Date(); floor.setFullYear(floor.getFullYear()-1); if(from<floor) from=floor;
+  const to=fromYMD(dates[dates.length-1]); to.setDate(to.getDate()+2);
+  let url=`/me/calendarView?startDateTime=${encodeURIComponent(from.toISOString())}&endDateTime=${encodeURIComponent(to.toISOString())}`+
+          `&$select=id,subject,start,isAllDay,type,seriesMasterId,isOrganizer&$top=250`;
+  const idx={}; let pages=0;
+  while(url && pages++<40){
+    const j=await olGraph("GET",url,null,{"Prefer":`outlook.timezone="${olTz()}"`});
+    (j.value||[]).forEach(o=>{
+      const series=!!o.seriesMasterId;
+      const k=olNorm(o.subject)+"|"+o.start.dateTime.slice(0,10)+"|"+(o.isAllDay?"":o.start.dateTime.slice(11,16))+"|"+(series?"S":"1");
+      if(!idx[k]) idx[k]={gid:series?o.seriesMasterId:o.id, owned:o.isOrganizer!==false};
+    });
+    url=j["@odata.nextLink"]||null;
+  }
+  const used=new Set(Object.values(olMap).map(m=>m.gid)); let linked=0;
+  keys.forEach(k=>{
+    const d=desired[k];
+    const hit=idx[olNorm(d.title)+"|"+d.date+"|"+d.time+"|"+(d.body.recurrence?"S":"1")];
+    if(hit && !used.has(hit.gid)){ used.add(hit.gid); olMap[k]={gid:hit.gid,sig:"",shape:d.shape,excl:[],owned:hit.owned}; linked++; }
+  });
+  olSaveMap(); return linked;
+}
+
+/* ---------- reconcile ---------- */
+async function olDeleteInstances(gid, dates){
+  for(const ds of dates){
+    const a=fromYMD(ds), b=fromYMD(ds); b.setDate(b.getDate()+1);
+    const j=await olGraph("GET",`/me/events/${gid}/instances?startDateTime=${encodeURIComponent(a.toISOString())}&endDateTime=${encodeURIComponent(b.toISOString())}&$select=id`);
+    for(const inst of (j.value||[])){ try{ await olGraph("DELETE",`/me/events/${inst.id}`); }catch(e){ if(e.status!==404) throw e; } }
+  }
+}
+async function olCreate(k,d,gen){
+  const ev=await olGraph("POST","/me/events",Object.assign({transactionId:hashStr(k+"|"+d.sig+"|"+gen)+"-"+k.slice(0,40)},d.body));
+  olMap[k]={gid:ev.id,sig:"",shape:d.shape,excl:[],owned:true,hadRec:!!d.body.recurrence}; olSaveMap();
+  if(d.excl.length) await olDeleteInstances(ev.id,d.excl);
+  olMap[k].sig=d.sig; olMap[k].excl=d.excl; olSaveMap();
+}
+async function olRemove(gid){ try{ await olGraph("DELETE",`/me/events/${gid}`); }catch(e){ if(e.status!==404) throw e; } }
+async function olApply(k,d,gen){
+  const m=olMap[k];
+  if(!m) return olCreate(k,d,gen);
+  if(m.sig===d.sig) return;
+  if(!m.owned){ m.sig=d.sig; olSaveMap(); return; }         // someone else's invite: link it, never rewrite it
+  const exclOk=m.excl.every(x=>d.excl.includes(x));
+  if(d.body.recurrence && (m.shape!==d.shape || !exclOk)){ await olRemove(m.gid); delete olMap[k]; olSaveMap(); return olCreate(k,d,gen); }
+  const patch=Object.assign({},d.body); delete patch.recurrence;
+  if(!d.body.recurrence && m.shape!==d.shape && m.shape && m.hadRec){ await olRemove(m.gid); delete olMap[k]; return olCreate(k,d,gen); }
+  try{ await olGraph("PATCH",`/me/events/${m.gid}`,patch); }
+  catch(e){ if(e.status===404){ delete olMap[k]; olSaveMap(); return olCreate(k,d,gen); } throw e; }
+  const added=d.excl.filter(x=>!m.excl.includes(x));
+  if(added.length) await olDeleteInstances(m.gid,added);
+  Object.assign(m,{sig:d.sig,shape:d.shape,excl:d.excl,hadRec:!!d.body.recurrence}); olSaveMap();
+}
+async function olSync(){
+  if(!olAuth.clientId || (!olAuth.rt && !olAuth.at)) return;
+  if(olRunning){ olAgain=true; return; }
+  olRunning=true;
+  try{
+    const desired=olDesired(), gen=Date.now();
+    if(!olAuth.linked){ olStatus("checking Outlook for events you already have…"); const n=await olLinkExisting(desired); olAuth.linked=true; olAuth.linkedCount=n; olSaveAuth(); }
+    const gone=Object.keys(olMap).filter(k=>!desired[k]);
+    for(const k of gone){ if(olMap[k].owned) await olRemove(olMap[k].gid); delete olMap[k]; olSaveMap(); }
+    const todo=Object.keys(desired).filter(k=>!olMap[k]||olMap[k].sig!==desired[k].sig);
+    let done=0, failed=0, lastErr="";
+    const worker=async()=>{ while(todo.length){ const k=todo.shift();
+      try{ await olApply(k,desired[k],gen); }catch(e){ if(e.code==="reconnect") throw e; failed++; lastErr=e.message; }
+      done++; if(done%5===0) olStatus(`syncing to Outlook… ${done} updated`); } };
+    await Promise.all([worker(),worker(),worker()]);
+    const now=new Date(); olAuth.lastSync=`${pad(now.getHours())}:${pad(now.getMinutes())}`; olSaveAuth();
+    olStatus(failed? `synced ${olAuth.lastSync}, ${failed} item${failed>1?"s":""} failed (${lastErr}) — will retry` :
+      `in sync ${olAuth.lastSync} ✓ ${Object.keys(olMap).length} items in Outlook${done?` (${done} updated)`:""}`);
+  }catch(e){
+    if(e.code==="reconnect"){ olAuth.needsReconnect=true; olSaveAuth(); olStatus("Microsoft sign-in expired — tap Reconnect (usually one tap)"); }
+    else olStatus("Outlook sync failed ("+e.message+") — will retry");
+  }finally{
+    olRunning=false; refreshOlUI(true);
+    if(olAgain){ olAgain=false; olSchedule(); }
+  }
+}
+function olSchedule(){ if(!olAuth.rt&&!olAuth.at) return; clearTimeout(olTimer); olTimer=setTimeout(olSync,2000); }
+function refreshOlUI(keepStatus){
+  const cid=document.getElementById("olClientId"); if(!cid) return;
+  document.getElementById("olRedirect").value=olRedirectUri();
+  if(olAuth.clientId) cid.placeholder="Client ID saved ✓ ("+olAuth.clientId.slice(0,8)+"…)";
+  const connected=!!(olAuth.rt||olAuth.at) && !olAuth.needsReconnect;
+  const btn=document.getElementById("btnOlConnect");
+  btn.textContent= olAuth.needsReconnect? "Reconnect Outlook" : connected? "Reconnect" : "Connect Outlook";
+  btn.style.display= connected? "none" : "";
+  document.getElementById("btnOlSync").style.display= connected? "" : "none";
+  document.getElementById("btnOlDisconnect").style.display= (olAuth.clientId&&(olAuth.rt||olAuth.at||olAuth.needsReconnect))? "" : "none";
+  document.getElementById("tglOlTasks").classList.toggle("on",settings.olTasks!==false);
+  if(!keepStatus){
+    if(olAuth.needsReconnect) olStatus("Microsoft sign-in expired — tap Reconnect (usually one tap)");
+    else if(connected) olStatus(`connected${olAuth.who?" as "+olAuth.who:""}${olAuth.lastSync?" · last sync "+olAuth.lastSync:""}`);
+    else olStatus(olAuth.clientId? "client ID saved — tap Connect Outlook" : "");
+  }
+}
+document.getElementById("btnOlConnect").onclick=()=>olConnect();
+document.getElementById("btnOlSync").onclick=()=>{ olStatus("syncing to Outlook…"); olSync(); };
+document.getElementById("btnOlDisconnect").onclick=()=>{
+  if(!confirm("Disconnect Outlook? Events already in Outlook stay there; SPECTER just stops updating them.")) return;
+  olAuth={clientId:olAuth.clientId, linked:olAuth.linked}; olSaveAuth(); refreshOlUI();
+};
+document.getElementById("tglOlTasks").onclick=()=>{ settings.olTasks = settings.olTasks===false; save(LS.settings,settings); refreshOlUI(true); olSchedule(); };
+document.getElementById("btnCopyOlRedirect").onclick=async()=>{
+  try{ await navigator.clipboard.writeText(olRedirectUri()); olStatus("redirect URI copied ✓"); }
+  catch(e){ document.getElementById("olRedirect").select(); document.execCommand("copy"); olStatus("redirect URI copied ✓"); }
+};
+
 /* =============== rendering =============== */
 const $=s=>document.querySelector(s);
 function renderHeader(){
@@ -1320,7 +1606,7 @@ function syncSettingsUI(){
   $("#selDefRem").value=settings.defRem;
   $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
 }
-$("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();show("settingsSheet");
+$("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();refreshOlUI(olRunning);show("settingsSheet");
   if("Notification" in window && Notification.permission==="default"){try{Notification.requestPermission()}catch(e){}}
 };
 $("#tglHandsFree").onclick=e=>{settings.handsFree=!settings.handsFree;save(LS.settings,settings);syncSettingsUI()};
@@ -1600,10 +1886,16 @@ function addQuickTodo(){
 /* midnight rollover + resume */
 let lastDay=todayStr();
 setInterval(()=>{ if(todayStr()!==lastDay){lastDay=todayStr();render();} },30000);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();} });
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();olSchedule();} });
 
 render();
 checkReminders();
+refreshOlUI();
+olHandleRedirect().then(back=>{
+  // returning from Microsoft sign-in: reopen Settings so the result is visible
+  if(back){ syncSettingsUI(); refreshSyncUI(); refreshOlUI(true); show("settingsSheet"); }
+  else olSchedule();
+});
 </script>
 </body>
 </html>
