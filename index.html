@@ -373,24 +373,12 @@ nav{
   <div class="grabber"></div>
   <h3 id="eventSheetTitle">New event</h3>
   <div class="field"><label>Title</label><input id="evTitle" autocomplete="off"></div>
+  <div class="field"><label>Date (no start time = all-day)</label><input type="date" id="evDate"></div>
   <div class="row2">
-    <div class="field"><label>Date</label><input type="date" id="evDate"></div>
-    <div class="field"><label>Time (blank = all-day)</label><input type="time" id="evTime"></div>
+    <div class="field"><label>Start time</label><input type="time" id="evTime"></div>
+    <div class="field"><label>End time</label><input type="time" id="evEnd"></div>
   </div>
   <div class="row2">
-    <div class="field"><label>Duration</label>
-      <select id="evDur">
-        <option value="">Not set</option>
-        <option value="15">15 min</option>
-        <option value="30">30 min</option>
-        <option value="45">45 min</option>
-        <option value="60">1 hr</option>
-        <option value="90">1.5 hr</option>
-        <option value="120">2 hr</option>
-        <option value="180">3 hr</option>
-        <option value="240">4 hr</option>
-      </select>
-    </div>
     <div class="field"><label>Reminder</label>
       <select id="evRem">
         <option value="">None</option>
@@ -402,14 +390,14 @@ nav{
         <option value="1440">1 day before</option>
       </select>
     </div>
-  </div>
-  <div class="field"><label>Repeats</label>
-    <select id="evFreq">
-      <option value="">Never</option>
-      <option value="daily">Daily</option>
-      <option value="weekly">Weekly</option>
-      <option value="monthly">Monthly (same date)</option>
-    </select>
+    <div class="field"><label>Repeats</label>
+      <select id="evFreq">
+        <option value="">Never</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly (same date)</option>
+      </select>
+    </div>
   </div>
   <div class="field" id="evDaysField" style="display:none"><label>On days</label>
     <div class="day-chips" id="evDayChips"></div>
@@ -1542,6 +1530,18 @@ $("#evFreq").onchange=e=>{
   $("#evDaysField").style.display = e.target.value==="weekly"?"block":"none";
   $("#evUntilField").style.display = e.target.value?"block":"none";
 };
+let evPrevStart="";
+$("#evTime").onfocus=e=>{evPrevStart=e.target.value;};
+$("#evTime").onchange=e=>{
+  const t=e.target.value, end=$("#evEnd").value;
+  if(!t){ $("#evEnd").value=""; }
+  else if(evPrevStart&&end){
+    const toMin=x=>{const[h,m]=x.split(":").map(Number);return h*60+m;};
+    let d=toMin(end)-toMin(evPrevStart); if(d<=0)d+=1440;
+    $("#evEnd").value=addMinutes(t,d);
+  } else if(!end){ $("#evEnd").value=addMinutes(t,60); }
+  evPrevStart=t;
+};
 function openEventSheet(ev,dateStr,occDate){
   editingId=ev?ev.id:null;
   editingOccDate = (ev&&ev.rec) ? (occDate||ev.date) : null;
@@ -1549,7 +1549,7 @@ function openEventSheet(ev,dateStr,occDate){
   $("#evTitle").value=ev?ev.title:"";
   $("#evDate").value=ev?ev.date:(dateStr||selectedDay||todayStr());
   $("#evTime").value=ev?(ev.time||""):"";
-  $("#evDur").value=ev?(ev.dur||""):"";
+  $("#evEnd").value=ev&&ev.time&&ev.dur?addMinutes(ev.time,ev.dur):"";
   $("#evFreq").value=ev&&ev.rec?ev.rec.freq:"";
   $("#evRem").value=ev?(ev.rem??""):"";
   $("#evUntil").value=ev&&ev.rec&&ev.rec.until?ev.rec.until:"";
@@ -1575,7 +1575,14 @@ $("#evSave").onclick=()=>{
     }
     if($("#evUntil").value)rec.until=$("#evUntil").value;
   }
-  const data={title,date:$("#evDate").value,time:$("#evTime").value||null,dur:$("#evDur").value?Number($("#evDur").value):null,rec,rem:$("#evRem").value,notes:$("#evNotes").value.trim()};
+  const time=$("#evTime").value||null, end=$("#evEnd").value;
+  let dur=null;
+  if(time&&end){
+    const toMin=t=>{const[h,m]=t.split(":").map(Number);return h*60+m;};
+    dur=toMin(end)-toMin(time);
+    if(dur<=0)dur+=1440; // end before start = runs past midnight
+  }
+  const data={title,date:$("#evDate").value,time,dur,rec,rem:$("#evRem").value,notes:$("#evNotes").value.trim()};
   if(editingId){ const e=events.find(x=>x.id===editingId); Object.assign(e,data); }
   else events.push(Object.assign({id:uid()},data));
   save(LS.events,events); render(); hideSheets();
