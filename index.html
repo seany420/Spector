@@ -550,6 +550,23 @@ nav{
     <div class="toggle" id="tglConfirm"></div>
   </div>
   <div class="set-row">
+    <div><div class="s-label">Voice character</div><div class="s-sub">Horror host: a deep, slow, theatrical narrator</div></div>
+    <select id="selVoiceStyle" class="set-select"><option value="host">Horror host</option><option value="plain">Plain</option></select>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Voice</div><div class="s-sub">Deep British male voices suit the host best</div></div>
+    <select id="selVoice" class="set-select" style="max-width:52%"></select>
+  </div>
+  <div class="set-row">
+    <div style="flex:1"><div class="s-label">Voice depth</div>
+      <input type="range" id="rngPitch" min="0.5" max="1.3" step="0.05" style="width:100%;margin-top:8px;accent-color:var(--ecto)">
+    </div>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Read days aloud</div><div class="s-sub">Tap any day on the calendar to hear what's on it</div></div>
+    <div class="toggle" id="tglReadTap"></div>
+  </div>
+  <div class="set-row">
     <div style="flex:1;margin-right:14px"><div class="s-label">Voice speed</div>
       <input type="range" id="rngRate" min="0.7" max="1.4" step="0.1" style="width:100%;margin-top:8px;accent-color:var(--ecto)">
     </div>
@@ -624,6 +641,7 @@ nav{
       <input type="file" id="fileImport" accept=".json,.ics,text/calendar" style="display:none">
     </div>
   </div>
+  <p class="hairline-note" id="versionNote"></p>
   <p class="hairline-note">
     Reminders announce while SPECTER is open (foreground or recently backgrounded, browser permitting).
     With your Ray-Ban Metas connected as the phone's Bluetooth audio, everything it says arrives in your ear —
@@ -648,7 +666,8 @@ const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random"},load(LS.settings,{}));
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true},load(LS.settings,{}));
+const APP_VERSION="2026.10.05b";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -680,6 +699,8 @@ const spokenTime = t=>{
   const ap=h>=12?"P M":"A M"; h=h%12||12;
   return m? `${h} ${m<10?"oh "+m:m} ${ap}` : `${h} ${ap}`;
 };
+const ORD=n=>n+(n%100>=11&&n%100<=13?"th":({1:"st",2:"nd",3:"rd"})[n%10]||"th");
+const spokenDate = s=>{ const d=fromYMD(s); return `${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${ORD(d.getDate())}`; };
 const addMinutes = (t,mins)=>{
   const [h,m]=t.split(":").map(Number);
   const total=(h*60+m+mins+1440)%1440;
@@ -734,7 +755,10 @@ function speak(text, force){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
-    u.rate=settings.rate||1;
+    const host=settings.voiceStyle==="host";
+    u.rate=(settings.rate||1)*(host?0.86:1);
+    u.pitch=host? (Number(settings.pitch)||0.7) : 1;
+    const v=pickVoice(); if(v){ u.voice=v; u.lang=v.lang; }
     u.onstart=()=>orb.classList.add("speaking");
     u.onend=done;
     u.onerror=done;
@@ -744,6 +768,33 @@ function speak(text, force){
   }catch(e){ done(); }
 }
 const announce = t=>{ if(settings.announce) speak(t,true); };
+/* ---------- voice choice + horror-host script ---------- */
+// best guesses for a deep, theatrical English voice across iOS / Mac / Android / Windows
+const HOST_VOICES=["Daniel","Arthur","Oliver","Google UK English Male","Microsoft Ryan","Microsoft George","Microsoft Thomas","Rishi","Gordon","Aaron","Fred","Alex","Microsoft Guy","Microsoft David","Google US English"];
+let voiceList=[];
+function loadVoices(){
+  try{ voiceList=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)); }catch(e){ voiceList=[]; }
+  fillVoiceSelect();
+}
+if("speechSynthesis" in window){ loadVoices(); try{ speechSynthesis.addEventListener("voiceschanged",loadVoices); }catch(e){} }
+function pickVoice(){
+  if(!voiceList.length) return null;
+  if(settings.voiceName){ const v=voiceList.find(x=>x.name===settings.voiceName); if(v) return v; }
+  if(settings.voiceStyle!=="host") return null;           // plain: let the device use its default
+  for(const n of HOST_VOICES){ const v=voiceList.find(x=>x.name===n || x.name.startsWith(n+" ")); if(v) return v; }
+  return voiceList.find(x=>/en-GB/i.test(x.lang)) || null;
+}
+function fillVoiceSelect(){
+  const sel=document.getElementById("selVoice"); if(!sel) return;
+  const auto=pickVoiceAutoName();
+  sel.innerHTML=`<option value="">Auto${auto?" ("+auto+")":""}</option>`+
+    voiceList.map(v=>`<option value="${v.name.replace(/"/g,"&quot;")}">${v.name.replace(/</g,"&lt;")} · ${v.lang}</option>`).join("");
+  sel.value=settings.voiceName||"";
+}
+function pickVoiceAutoName(){ const keep=settings.voiceName; settings.voiceName=""; const v=pickVoice(); settings.voiceName=keep; return v? v.name : ""; }
+const isHost=()=>settings.voiceStyle==="host";
+const pickOne=a=>a[Math.floor(Math.random()*a.length)];
+const say=(plain,host)=>isHost()? host : plain;
 
 /* =============== reminder engine =============== */
 function occKey(ev,dateStr){ return ev.id+"|"+dateStr; }
@@ -771,7 +822,8 @@ function fireReminder(ev){
   const when = lead===0? "now" : lead>=60? `in ${lead/60} hour${lead>=120?"s":""}` : `in ${lead} minutes`;
   const sub = `${niceTime(ev.time)}${ev.notes? " · "+ev.notes:""}`;
   showBanner(ev.title, `${when==="now"?"Starting now":"Coming up "+when} · ${sub}`);
-  announce(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${spokenTime(ev.time)}.`);
+  announce(say(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${spokenTime(ev.time)}.`,
+    `Pardon the intrusion... ${ev.title} ${when==="now"?"begins now. Right now":"begins "+when}. At ${spokenTime(ev.time)}. Don't keep it waiting.`));
   if("Notification" in window && Notification.permission==="granted"){
     try{ new Notification("SPECTER · "+ev.title,{body:sub}); }catch(e){}
   }
@@ -992,20 +1044,22 @@ function executeIntent(it){
     case "add-event":{
       events.push({id:uid(),title:it.title,date:it.date,time:it.time,dur:it.dur||null,rec:it.rec,rem:it.rem==null?"":String(it.rem),notes:""});
       save(LS.events,events); render();
-      speak(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`);
+      speak(say(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`,
+        `It is written. ${it.title}... ${niceDate(it.date)}${it.time? ", at "+spokenTime(it.time):""}${it.rec? ". And it will return, again and again":""}.`));
       return true;
     }
     case "add-todo":{
       todos.push({id:uid(),title:it.title,due:it.due,done:false});
       save(LS.todos,todos); render();
-      speak(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`);
+      speak(say(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`,
+        `${it.title}. Added to the list${it.due? ". It comes due "+niceDate(it.due)+"":""}. The list is always hungry.`));
       return true;
     }
     case "complete-todo":{
       const t=findByTitle(todos.filter(x=>!x.done), it.query);
       if(!t){ speak(`I couldn't find ${it.query} on your list.`); return false; }
       t.done=true; save(LS.todos,todos); render();
-      speak(`${t.title}. Done. The list is satisfied, for now.`);
+      speak(say(`${t.title}. Done. The list is satisfied, for now.`, `${t.title}... is finished. Dead and buried. The list is satisfied, for now.`));
       return true;
     }
     case "delete":{
@@ -1024,17 +1078,31 @@ function executeIntent(it){
 }
 function readAgenda(dateStr){
   const evs=eventsOn(dateStr), tds=todosOn(dateStr);
-  const label=niceDate(dateStr).toLowerCase()==="today"?"today":niceDate(dateStr);
-  if(!evs.length && !tds.length){ speak(`Nothing scheduled ${label}. The void is quiet.`,true); return; }
-  let parts=[`${label}: ${evs.length} event${evs.length!==1?"s":""}${tds.length? " and "+tds.length+" task"+(tds.length!==1?"s":""):""}.`];
-  evs.forEach(e=>parts.push(`${e.title}${e.time? " at "+spokenTime(e.time):""}.`));
-  tds.forEach(t=>parts.push(`Task: ${t.title}.`));
+  const label=niceDate(dateStr).toLowerCase()==="today"?"today":niceDate(dateStr).toLowerCase()==="tomorrow"?"tomorrow":spokenDate(dateStr);
+  if(!isHost()){
+    if(!evs.length && !tds.length){ speak(`Nothing scheduled ${label}. The void is quiet.`,true); return; }
+    let parts=[`${label}: ${evs.length} event${evs.length!==1?"s":""}${tds.length? " and "+tds.length+" task"+(tds.length!==1?"s":""):""}.`];
+    evs.forEach(e=>parts.push(`${e.title}${e.time? " at "+spokenTime(e.time):""}.`));
+    tds.forEach(t=>parts.push(`Task: ${t.title}.`));
+    speak(parts.join(" "),true); return;
+  }
+  const on = /^(today|tomorrow)$/.test(label)? label : "on "+label;
+  if(!evs.length && !tds.length){
+    speak(pickOne([`Nothing awaits you ${on}. Not a soul. Enjoy the silence... while it lasts.`,
+      `${on[0].toUpperCase()+on.slice(1)}, the house is empty. Nothing scheduled. How... peaceful.`]),true); return;
+  }
+  const n=evs.length+tds.length;
+  const parts=[pickOne([`Good evening. ${on[0].toUpperCase()+on.slice(1)}, ${n===1?"one thing awaits you":n+" things await you"}.`,
+    `Ah... ${label}. Let us see what fate has arranged. ${n===1?"Just one thing":n+" things"}.`])];
+  evs.forEach((e,i)=>parts.push(e.time? `At ${spokenTime(e.time)}... ${e.title}.` : `All day long... ${e.title}.`));
+  if(tds.length) parts.push(`And lurking on your list: `+tds.map(t=>t.title).join(". ")+".");
+  parts.push(pickOne(["Do try to survive it.","Sleep well.","I'll be watching.","Pleasant dreams."]));
   speak(parts.join(" "),true);
 }
 function readTodos(){
   const open=todos.filter(t=>!t.done);
-  if(!open.length){ speak("Your list is empty. Suspiciously empty.",true); return; }
-  speak(`${open.length} open task${open.length!==1?"s":""}. `+open.map(t=>t.title).join(". ")+".",true);
+  if(!open.length){ speak(say("Your list is empty. Suspiciously empty.","Your list is empty. Suspiciously... empty."),true); return; }
+  speak(say(`${open.length} open task${open.length!==1?"s":""}. `,`${open.length} unfinished thing${open.length!==1?"s":""} still breathing. `)+open.map(t=>t.title).join(". ")+".",true);
 }
 
 /* =============== ICS export (Outlook / Apple / Google) =============== */
@@ -1904,6 +1972,11 @@ function syncSettingsUI(){
   $("#tglAnnounce").classList.toggle("on",settings.announce);
   $("#tglConfirm").classList.toggle("on",settings.confirm);
   $("#rngRate").value=settings.rate;
+  $("#rngPitch").value=settings.pitch;
+  $("#selVoiceStyle").value=settings.voiceStyle;
+  $("#tglReadTap").classList.toggle("on",settings.readTap!==false);
+  loadVoices();
+  $("#versionNote").textContent="SPECTER version "+APP_VERSION;
   $("#selDefRem").value=settings.defRem;
   $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
   $("#selTheme").value=settings.theme||"classic";
@@ -1919,7 +1992,12 @@ $("#tglAnnounce").onclick=e=>{settings.announce=!settings.announce;save(LS.setti
 $("#tglConfirm").onclick=e=>{settings.confirm=!settings.confirm;save(LS.settings,settings);syncSettingsUI()};
 $("#rngRate").oninput=e=>{settings.rate=Number(e.target.value);save(LS.settings,settings)};
 $("#selDefRem").onchange=e=>{settings.defRem=e.target.value;save(LS.settings,settings)};
-$("#testVoice").onclick=()=>{unlockVoice();speak("Specter online. I hear you through the glasses.",true)};
+$("#testVoice").onclick=()=>{unlockVoice();speak(say("Specter online. I hear you through the glasses.",
+  "Good evening. I am your host. Every appointment, every errand, every... obligation. I remember them all."),true)};
+$("#selVoiceStyle").onchange=e=>{settings.voiceStyle=e.target.value;save(LS.settings,settings);loadVoices()};
+$("#selVoice").onchange=e=>{settings.voiceName=e.target.value;save(LS.settings,settings)};
+$("#rngPitch").oninput=e=>{settings.pitch=Number(e.target.value);save(LS.settings,settings)};
+$("#tglReadTap").onclick=()=>{settings.readTap=settings.readTap===false;save(LS.settings,settings);syncSettingsUI()};
 $("#btnExport").onclick=()=>{
   const blob=new Blob([JSON.stringify({events,todos,settings,days},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="specter-backup.json";a.click();
@@ -2107,7 +2185,7 @@ function handleUtterance(text){
   }
   vsMode="command";
   if(STOP_RX.test(text.trim())){
-    speak("Closing. I'll be here.",true);
+    speak(say("Closing. I'll be here.","Until next time. I'll be here... waiting."),true);
     hideSheets(); return;
   }
   const it=parseCommand(text);
@@ -2165,7 +2243,11 @@ document.querySelectorAll(".tab[data-view]").forEach(t=>{
     $("#view-"+t.dataset.view).classList.add("active");
   };
 });
-$("#tabSpeak").onclick=()=>{unlockVoice();readAgenda(todayStr());};
+$("#tabSpeak").onclick=()=>{
+  unlockVoice();
+  // on the calendar, read whichever day is selected; everywhere else, today
+  readAgenda($("#view-cal").classList.contains("active")? selectedDay : todayStr());
+};
 document.addEventListener("click",e=>{
   const chk=e.target.closest("[data-check]");
   if(chk){
@@ -2178,7 +2260,11 @@ document.addEventListener("click",e=>{
   const del=e.target.closest("[data-del]");
   if(del){todos=todos.filter(x=>x.id!==del.dataset.del);save(LS.todos,todos);render();return;}
   const cell=e.target.closest("[data-day]");
-  if(cell){selectedDay=cell.dataset.day;renderCal();return;}
+  if(cell){
+    selectedDay=cell.dataset.day; renderCal();
+    if(settings.readTap!==false){ unlockVoice(); readAgenda(selectedDay); }
+    return;
+  }
   const evEl=e.target.closest("[data-ev]");
   if(evEl){const ev=events.find(x=>x.id===evEl.dataset.ev); if(ev)openEventSheet(ev,null,evEl.dataset.date);return;}
 });
@@ -2194,10 +2280,27 @@ function addQuickTodo(){
   save(LS.todos,todos); $("#quickTodo").value=""; render();
 }
 
+/* =============== update check =============== */
+// Home Screen apps can hang on to an old copy of the page. Peek at the live file and reload if it's newer.
+let lastUpdateCheck=0;
+async function checkForUpdate(){
+  if(location.protocol==="file:" || Date.now()-lastUpdateCheck<60000) return;
+  lastUpdateCheck=Date.now();
+  try{
+    const r=await fetch(location.pathname+"?check="+Date.now(),{cache:"no-store"});
+    if(!r.ok) return;
+    const m=(await r.text()).match(/APP_VERSION="([^"]+)"/);
+    if(!m || m[1]===APP_VERSION || openSheet) return;
+    if(sessionStorage.getItem("specter_reloaded_for")===m[1]) return;   // never loop
+    sessionStorage.setItem("specter_reloaded_for",m[1]);
+    location.replace(location.pathname+"?v="+encodeURIComponent(m[1])+location.hash);
+  }catch(e){}
+}
+
 /* midnight rollover + resume */
 let lastDay=todayStr();
 setInterval(()=>{ if(todayStr()!==lastDay){lastDay=todayStr();render();} },30000);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();olSchedule();} });
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();olSchedule();checkForUpdate();} });
 
 render();
 checkReminders();
@@ -2205,7 +2308,7 @@ refreshOlUI();
 olHandleRedirect().then(back=>{
   // returning from Microsoft sign-in: reopen Settings so the result is visible
   if(back){ syncSettingsUI(); refreshSyncUI(); refreshOlUI(true); show("settingsSheet"); }
-  else olSchedule();
+  else{ olSchedule(); checkForUpdate(); }
 });
 </script>
 </body>
