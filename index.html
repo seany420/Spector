@@ -283,6 +283,102 @@ nav{
 .toggle.on{background:var(--ecto-dim);border-color:var(--ecto-dim)}
 .toggle.on::after{left:23px;background:var(--ecto)}
 .hairline-note{font-size:12px;color:#5a5266;line-height:1.6;margin-top:14px}
+.set-select{background:var(--surface2);border:1px solid var(--line);color:var(--bone);border-radius:10px;padding:9px 10px;font-family:'Karla'}
+
+/* =============== looks: themes, day decor, kills =============== */
+/* ---------- day decorations (color + emoji per date) ---------- */
+.cal-cell{overflow:hidden;background-size:cover;background-position:center}
+.cal-cell.decor{background-color:var(--dc-bg);border-color:var(--dc)}
+.cal-cell.decor.today{box-shadow:inset 0 0 0 2px var(--ecto)}
+.cal-emoji{position:absolute;top:2px;right:3px;font-size:11px;line-height:1}
+.cal-num{position:relative}
+.agenda-item.colored{border-left:4px solid var(--evc)}
+.swatches{display:grid;grid-template-columns:repeat(9,1fr);gap:7px;max-width:380px}
+.swatch{
+  aspect-ratio:1;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0;
+  background:var(--sw);position:relative;
+}
+.swatch.none{background:var(--surface2);color:var(--bone-dim);font-size:14px}
+.swatch.on{border-color:var(--bone);box-shadow:0 0 0 2px var(--void),0 0 0 4px var(--bone)}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.emoji-btn{
+  aspect-ratio:1;font-size:20px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+}
+.emoji-btn.on{border-color:var(--ecto);background:var(--line)}
+.day-tools{display:flex;gap:8px}
+.day-tools .btn{flex:1}
+#decorPreview{font-size:13px;color:var(--bone-dim);margin-bottom:14px}
+
+/* ---------- task kills: arrow / machete + blood ---------- */
+.todo-item{position:relative}
+.todo-item.killed .todo-title{text-decoration:none}
+.kill{position:absolute;inset:0;pointer-events:none;z-index:2}
+.kill .splat{position:absolute;top:50%;width:150px;height:84px;transform:translate(-50%,-50%);filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+.kill .arrow{
+  position:absolute;left:44px;right:40px;top:50%;height:22px;margin-top:-11px;
+  display:flex;align-items:center;transform:rotate(-3deg);
+}
+.kill .arrow .shaft{flex:1;height:4px;background:linear-gradient(#a57a4e,#6b4a2b);border-radius:2px}
+.kill .arrow svg{flex-shrink:0;display:block}
+.kill .machete{position:absolute;right:40px;top:50%;width:220px;max-width:66%;height:auto;transform-origin:92% 50%;transform:translateY(-58%) rotate(-9deg)}
+.todo-item.dying{animation:shake .35s .18s}
+.todo-item.dying .kill .arrow{animation:arrowIn .22s cubic-bezier(.2,.9,.3,1) both}
+.todo-item.dying .kill .machete{animation:chop .26s cubic-bezier(.5,0,.4,1.4) both}
+.todo-item.dying .kill .splat{animation:splat .3s .17s ease-out both}
+@keyframes arrowIn{from{transform:translateX(-110%) rotate(-3deg);opacity:.2}to{transform:rotate(-3deg);opacity:1}}
+@keyframes chop{from{transform:translateY(-58%) rotate(-75deg);opacity:0}60%{opacity:1}to{transform:translateY(-58%) rotate(-9deg)}}
+@keyframes splat{from{transform:translate(-50%,-50%) scale(.1);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@keyframes shake{0%,100%{transform:none}25%{transform:translate(-3px,1px)}50%{transform:translate(3px,-1px)}75%{transform:translate(-2px,0)}}
+@media (prefers-reduced-motion:reduce){.todo-item.dying,.todo-item.dying .kill *{animation:none!important}}
+
+/* ---------- theme: blood ---------- */
+:root[data-theme="blood"]{
+  --void:#0B0607;--surface:#170C0D;--surface2:#211012;--line:#3D1A1C;
+  --bone:#EFE4DE;--bone-dim:#A8918D;--ecto:#D7263D;--ecto-dim:#7A1420;--violet:#9B2335;--ember:#FF6B4A;
+}
+:root[data-theme="blood"] body{
+  background-image:var(--bg-splats);background-repeat:no-repeat;background-attachment:fixed;
+  background-position:left -70px top 150px,right -90px bottom 130px;background-size:280px auto,340px auto;
+}
+:root[data-theme="blood"] .btn-primary{color:#fff4f0}
+:root[data-theme="blood"] .wordmark span{text-shadow:0 0 12px rgba(215,38,61,.6)}
+:root[data-theme="blood"] #app::before{
+  content:"";position:fixed;top:0;left:0;right:0;height:64px;z-index:30;pointer-events:none;
+  max-width:560px;margin:0 auto;background:var(--drips) repeat-x top/280px 64px;opacity:.9;
+}
+:root[data-theme="blood"] .cal-cell.today{border-color:var(--ecto);color:#ffd9dd;text-shadow:0 0 6px var(--ecto)}
+:root[data-theme="blood"] .cal-dot{background:var(--ecto)}
+:root[data-theme="blood"] .cal-dot.t{background:#ff9a7a}
+
+/* ---------- theme: halloween ---------- */
+:root[data-theme="halloween"]{
+  --void:#0E0A12;--surface:#1A1220;--surface2:#24182C;--line:#3B2A46;
+  --bone:#F5EBDA;--bone-dim:#AE9DB6;--ecto:#FF7A1A;--ecto-dim:#8A4310;--violet:#9354C9;--ember:#A6E64A;
+}
+:root[data-theme="halloween"] body{
+  background-image:
+    radial-gradient(circle at 58% 5%,rgba(255,220,150,.22) 0 15px,rgba(255,170,60,.06) 17px,transparent 46px),
+    radial-gradient(ellipse at 50% 120%,rgba(147,84,201,.18),transparent 60%);
+  background-attachment:fixed;
+}
+:root[data-theme="halloween"] .btn-primary{color:#1a0d02}
+:root[data-theme="halloween"] .wordmark span{text-shadow:0 0 14px rgba(255,122,26,.7)}
+:root[data-theme="halloween"] #app::before{
+  content:"";position:fixed;top:0;right:max(0px,calc(50% - 280px));width:120px;height:120px;z-index:30;pointer-events:none;
+  background:var(--web) no-repeat top right/120px 120px;opacity:.55;
+}
+:root[data-theme="halloween"] #app::after{
+  content:"🦇";position:fixed;top:calc(var(--sat) + 44px);left:-40px;font-size:18px;z-index:30;pointer-events:none;
+  animation:batfly 14s linear infinite;opacity:.85;
+}
+@keyframes batfly{
+  0%{transform:translate(0,0)}25%{transform:translate(28vw,18px)}50%{transform:translate(56vw,-6px)}
+  75%{transform:translate(84vw,14px)}100%{transform:translate(115vw,0)}
+}
+:root[data-theme="halloween"] .cal-cell:not(.other):not(.decor){background:linear-gradient(160deg,rgba(255,122,26,.07),transparent 70%)}
+:root[data-theme="halloween"] .cal-cell.today{box-shadow:0 0 12px rgba(255,122,26,.45)}
+@media (prefers-reduced-motion:reduce){:root[data-theme="halloween"] #app::after{display:none}}
 </style>
 </head>
 <body>
@@ -314,7 +410,10 @@ nav{
       <div class="day-panel">
         <div class="section-label" id="dayPanelLabel">Selected day</div>
         <div id="dayPanelList"></div>
-        <button class="btn btn-ghost" id="addEventBtn">+ Add event</button>
+        <div class="day-tools">
+          <button class="btn btn-ghost" id="addEventBtn">+ Add event</button>
+          <button class="btn btn-ghost" id="decorDayBtn">🎨 Color &amp; emoji</button>
+        </div>
       </div>
     </section>
 
@@ -404,15 +503,40 @@ nav{
   </div>
   <div class="field" id="evUntilField" style="display:none"><label>Until (optional)</label><input type="date" id="evUntil"></div>
   <div class="field"><label>Notes</label><input id="evNotes" autocomplete="off"></div>
+  <div class="field"><label>Color</label><div class="swatches" id="evSwatches"></div></div>
   <button class="btn btn-primary" id="evSave">Save event</button>
   <button class="btn btn-ghost" id="evDeleteOcc" style="display:none">Delete just this day</button>
   <button class="btn btn-danger" id="evDelete" style="display:none">Delete event</button>
+</div>
+
+<!-- DAY DECOR SHEET -->
+<div class="sheet" id="decorSheet">
+  <div class="grabber"></div>
+  <h3 id="decorTitle">Decorate day</h3>
+  <div id="decorPreview"></div>
+  <div class="field"><label>Color</label><div class="swatches" id="decorSwatches"></div></div>
+  <div class="field"><label>Emoji</label><div class="emoji-grid" id="decorEmojis"></div></div>
+  <div class="field"><label>Or type any emoji</label><input id="decorEmojiCustom" maxlength="8" autocomplete="off" placeholder="Tap here, then pick from your emoji keyboard"></div>
+  <button class="btn btn-primary" id="decorSave">Save</button>
+  <button class="btn btn-ghost" id="decorClear">Clear this day</button>
 </div>
 
 <!-- SETTINGS SHEET -->
 <div class="sheet" id="settingsSheet">
   <div class="grabber"></div>
   <h3>Settings</h3>
+  <div class="set-row">
+    <div><div class="s-label">Look</div><div class="s-sub">Classic ghost, blood-spattered, or full Halloween</div></div>
+    <select id="selTheme" class="set-select">
+      <option value="classic">Classic</option><option value="blood">Blood splatter</option><option value="halloween">Halloween</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="s-label">Finished tasks</div><div class="s-sub">How a task dies when you check it off</div></div>
+    <select id="selKill" class="set-select">
+      <option value="random">Arrow or machete</option><option value="arrow">Arrow</option><option value="machete">Machete</option><option value="strike">Plain strikethrough</option>
+    </select>
+  </div>
   <div class="set-row">
     <div><div class="s-label">Hands-free mode</div><div class="s-sub">One orb tap starts a voice session: say commands, answer “yes/no” aloud, chain until “that's all”</div></div>
     <div class="toggle" id="tglHandsFree"></div>
@@ -518,13 +642,14 @@ nav{
 "use strict";
 /* =============== state =============== */
 const LS = {
-  events:"specter_events", todos:"specter_todos", settings:"specter_settings", fired:"specter_fired"
+  events:"specter_events", todos:"specter_todos", settings:"specter_settings", fired:"specter_fired", days:"specter_days"
 };
 const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15"},load(LS.settings,{}));
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random"},load(LS.settings,{}));
+let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
@@ -1424,8 +1549,171 @@ document.getElementById("btnCopyOlRedirect").onclick=async()=>{
   catch(e){ document.getElementById("olRedirect").select(); document.execCommand("copy"); olStatus("redirect URI copied ✓"); }
 };
 
-/* =============== rendering =============== */
 const $=s=>document.querySelector(s);
+/* =============== looks: themes, day decor, task kills =============== */
+const PALETTE=[["#B3001B","Blood"],["#FF7518","Pumpkin"],["#7CCF3A","Slime"],["#8E4FC4","Poison"],
+  ["#3D6BC4","Midnight"],["#9BE8C8","Ecto"],["#E8DCC4","Bone"],["#5C5C66","Grave"]];
+const EMOJIS=["🎃","👻","💀","🩸","🔪","🦇","🕷️","🕸️","🧛","🧟","⚰️","🪦","🔥","🌕","🍬","🕯️",
+  "🎂","❤️","⭐","🎉","✈️","🏥","💊","☕"];
+const reducedMotion=()=>window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+// seeded PRNG so a given day / task always gets the same splatter
+function rng(seed){
+  let h=2166136261; for(const c of String(seed)) h=Math.imul(h^c.charCodeAt(0),16777619);
+  return ()=>{ h=(h+0x6D2B79F5)|0; let t=h; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; };
+}
+function splatSVG(seed,w,h,op){
+  const r=rng(seed), cx=w/2, cy=h/2, k=Math.min(w,h)/84, f=n=>n.toFixed(1);
+  let g="";
+  for(let i=0,n=7+r()*4;i<n;i++) g+=`<circle cx="${f(cx+(r()-.5)*22*k)}" cy="${f(cy+(r()-.5)*14*k)}" r="${f((6+r()*9)*k)}"/>`;
+  for(let i=0,n=6+r()*5;i<n;i++){                       // streaks flung outward
+    const a=r()*Math.PI*2, d=(16+r()*10)*k, len=(7+r()*12)*k;
+    g+=`<ellipse cx="${f(cx+Math.cos(a)*d)}" cy="${f(cy+Math.sin(a)*d*.7)}" rx="${f((1.6+r()*2.2)*k)}" ry="${f(len)}" transform="rotate(${f(a*180/Math.PI-90)} ${f(cx+Math.cos(a)*d)} ${f(cy+Math.sin(a)*d*.7)})"/>`;
+  }
+  for(let i=0,n=10+r()*10;i<n;i++){                      // droplets
+    const a=r()*Math.PI*2, d=(24+r()*34)*k;
+    const x=Math.max(3,Math.min(w-3,cx+Math.cos(a)*d*1.3)), y=Math.max(3,Math.min(h-3,cy+Math.sin(a)*d*.75));
+    g+=`<circle cx="${f(x)}" cy="${f(y)}" r="${f((.8+r()*2.6)*k)}"/>`;
+  }
+  for(let i=0,n=1+Math.floor(r()*3);i<n;i++){           // drips
+    const x=cx+(r()-.5)*24*k, len=(10+r()*(h/2-14))*Math.min(1,k*1.2), wd=(2.4+r()*1.8)*k;
+    g+=`<rect x="${f(x-wd/2)}" y="${f(cy)}" width="${f(wd)}" height="${f(len)}" rx="${f(wd/2)}"/><circle cx="${f(x)}" cy="${f(cy+len)}" r="${f(wd*.85)}"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><g fill="#8E0A14" fill-opacity="${op||.92}">${g}</g>`+
+    `<g fill="#C3121F" fill-opacity="${(op||.92)*.7}"><circle cx="${f(cx-3*k)}" cy="${f(cy-2*k)}" r="${f(5*k)}"/></g></svg>`;
+}
+const svgURI=svg=>`url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+function dripsSVG(){
+  const r=rng("drips"), W=280, H=64; let g=`<rect x="0" y="0" width="${W}" height="5"/>`;
+  for(let x=4;x<W;x+=10+r()*22){
+    const wd=3+r()*6, len=6+r()*(r()<.25?52:22);
+    g+=`<rect x="${x.toFixed(1)}" y="0" width="${wd.toFixed(1)}" height="${len.toFixed(1)}" rx="${(wd/2).toFixed(1)}"/>`+
+       `<circle cx="${(x+wd/2).toFixed(1)}" cy="${len.toFixed(1)}" r="${(wd*.62).toFixed(1)}"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs><linearGradient id="d" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5E0710"/><stop offset="1" stop-color="#9E0E1C"/></linearGradient></defs><g fill="url(#d)">${g}</g></svg>`;
+}
+function webSVG(){
+  // cobweb anchored at the top-right corner
+  const C=[120,0], spokes=[95,112,130,148,165,178].map(d=>d*Math.PI/180);
+  const pt=(a,rad)=>[C[0]+Math.cos(a)*rad, C[1]+Math.sin(a)*rad];
+  let d=spokes.map(a=>{const p=pt(a,128);return `M${C[0]} ${C[1]}L${p[0].toFixed(1)} ${p[1].toFixed(1)}`}).join("");
+  [26,50,76,102].forEach(rad=>{
+    for(let i=0;i<spokes.length-1;i++){
+      const p=pt(spokes[i],rad), q=pt(spokes[i+1],rad), m=pt((spokes[i]+spokes[i+1])/2,rad*.86);
+      d+=`M${p[0].toFixed(1)} ${p[1].toFixed(1)}Q${m[0].toFixed(1)} ${m[1].toFixed(1)} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
+    }
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><path d="${d}" fill="none" stroke="#E6DDF0" stroke-width=".8"/><line x1="70" y1="0" x2="70" y2="58" stroke="#E6DDF0" stroke-width=".6"/><text x="70" y="70" font-size="14" text-anchor="middle">🕷️</text></svg>`;
+}
+let themeAssets=false;
+function applyTheme(){
+  const th=settings.theme||"classic", root=document.documentElement;
+  if(th==="classic") delete root.dataset.theme; else root.dataset.theme=th;
+  if(th!=="classic" && !themeAssets){
+    themeAssets=true;
+    root.style.setProperty("--bg-splats",svgURI(splatSVG("bg-a",280,220,.2))+","+svgURI(splatSVG("bg-b",340,260,.16)));
+    root.style.setProperty("--drips",svgURI(dripsSVG()));
+    root.style.setProperty("--web",svgURI(webSVG()));
+  }
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content=getComputedStyle(root).getPropertyValue("--void").trim()||"#0D0B10";
+}
+const cellSplats={};
+function cellSplat(ds){
+  // blood theme: roughly a third of the days get spattered
+  const r=rng("cell"+ds); if(r()>.34) return "";
+  const v=Math.floor(r()*8);
+  return cellSplats[v]||(cellSplats[v]=svgURI(splatSVG("cellv"+v,100,100,.38)));
+}
+function dayDecor(ds){
+  const d=Object.assign({},days[ds]||{});
+  if(!d.emoji && settings.theme==="halloween" && ds.slice(5)==="10-31") d.emoji="🎃";
+  return d;
+}
+
+/* ---------- weapons ---------- */
+const ARROW_FLETCH=`<svg width="34" height="22" viewBox="0 0 34 22"><rect x="0" y="9" width="34" height="4" fill="#8a6239"/>`+
+  `<polygon points="2,1 13,1 27,9 11,9" fill="#E8DCC4"/><polygon points="2,21 13,21 27,13 11,13" fill="#E8DCC4"/>`+
+  `<polygon points="5,1 8,1 21,9 17,9" fill="#9E0E1C"/><polygon points="5,21 8,21 21,13 17,13" fill="#9E0E1C"/>`+
+  `<rect x="0" y="8" width="3" height="6" rx="1" fill="#3a2a1c"/></svg>`;
+const ARROW_HEAD=`<svg width="32" height="22" viewBox="0 0 32 22"><defs><linearGradient id="ah" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e7eb"/><stop offset="1" stop-color="#6f7880"/></linearGradient></defs>`+
+  `<rect x="0" y="9" width="8" height="4" fill="#6b4a2b"/><polygon points="6,2 32,11 6,20 10,11" fill="url(#ah)"/>`+
+  `<path d="M18,7 L32,11 L20,14 Q19,17 17.5,19 Q16,17 17,13 Z" fill="#9E0E1C" opacity=".9"/></svg>`;
+const MACHETE=`<svg class="machete" viewBox="0 0 240 44"><defs><linearGradient id="mb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef1f3"/><stop offset=".55" stop-color="#aab2b8"/><stop offset="1" stop-color="#6c757c"/></linearGradient></defs>`+
+  `<path d="M186,15 L34,8 Q8,8 3,22 Q9,34 34,33 L186,29 Z" fill="url(#mb)" stroke="#4d555b" stroke-width=".8"/>`+
+  `<path d="M34,9 L186,15.5" stroke="#fff" stroke-width="1.2" opacity=".55"/>`+
+  `<path d="M4,22 Q9,9 34,9 L96,12 Q90,16 94,20 Q82,19 80,27 Q72,22 62,30 Q50,26 40,32 L34,33 Q9,34 4,22 Z" fill="#8E0A14" opacity=".9"/>`+
+  `<rect x="62" y="29" width="3" height="11" rx="1.5" fill="#8E0A14"/><circle cx="63.5" cy="40" r="2.4" fill="#8E0A14"/>`+
+  `<rect x="183" y="9" width="7" height="26" rx="2" fill="#4a4f54"/>`+
+  `<rect x="189" y="14" width="49" height="16" rx="6" fill="#2b1d14"/><rect x="189" y="16" width="49" height="3" fill="#3d2a1d"/>`+
+  `<circle cx="203" cy="22" r="2.2" fill="#c9b48a"/><circle cx="223" cy="22" r="2.2" fill="#c9b48a"/></svg>`;
+function killStyle(t){
+  const k=settings.kill||"random";
+  if(k!=="random") return k;
+  return rng(t.id)()<.5? "arrow" : "machete";
+}
+function killHTML(t){
+  const k=killStyle(t);
+  if(k==="strike") return "";
+  const splat=splatSVG("kill"+t.id,150,84);
+  if(k==="arrow") return `<div class="kill"><div class="splat" style="left:56%">${splat}</div>`+
+    `<div class="arrow">${ARROW_FLETCH}<div class="shaft"></div>${ARROW_HEAD}</div></div>`;
+  return `<div class="kill"><div class="splat" style="left:calc(100% - 235px)">${splat}</div>${MACHETE}</div>`;
+}
+function killTask(t,row){
+  if(row.classList.contains("dying")) return;
+  row.classList.add("dying","done","killed");
+  row.insertAdjacentHTML("beforeend",killHTML(t));
+  if(navigator.vibrate) try{navigator.vibrate(40)}catch(e){}
+  setTimeout(()=>{ t.done=true; save(LS.todos,todos); render(); }, reducedMotion()? 200 : 800);
+}
+
+/* ---------- color swatches + decor sheet ---------- */
+function buildSwatches(el,current,onPick){
+  el.innerHTML=`<button class="swatch none ${current?"":"on"}" data-sw="" aria-label="No color">∅</button>`+
+    PALETTE.map(([c,n])=>`<button class="swatch ${current===c?"on":""}" data-sw="${c}" style="--sw:${c}" aria-label="${n}" title="${n}"></button>`).join("");
+  el.onclick=e=>{
+    const b=e.target.closest("[data-sw]"); if(!b) return;
+    el.querySelectorAll(".swatch").forEach(x=>x.classList.toggle("on",x===b));
+    onPick(b.dataset.sw);
+  };
+}
+let decorDay=null, decorDraft={};
+function decorPreview(){
+  const p=[];
+  if(decorDraft.emoji) p.push(decorDraft.emoji);
+  if(decorDraft.color) p.push((PALETTE.find(x=>x[0]===decorDraft.color)||["","Custom"])[1]);
+  $("#decorPreview").textContent=p.length? "Marked: "+p.join(" · ") : "Pick a color, an emoji, or both.";
+}
+function openDecor(ds){
+  decorDay=ds; decorDraft=Object.assign({},days[ds]||{});
+  $("#decorTitle").textContent="Decorate "+niceDate(ds);
+  buildSwatches($("#decorSwatches"),decorDraft.color||"",c=>{decorDraft.color=c;decorPreview();});
+  const grid=$("#decorEmojis");
+  grid.innerHTML=EMOJIS.map(e=>`<button class="emoji-btn ${decorDraft.emoji===e?"on":""}" data-em="${e}">${e}</button>`).join("");
+  grid.onclick=e=>{
+    const b=e.target.closest("[data-em]"); if(!b) return;
+    const on=decorDraft.emoji===b.dataset.em;
+    decorDraft.emoji=on?"":b.dataset.em; $("#decorEmojiCustom").value="";
+    grid.querySelectorAll(".emoji-btn").forEach(x=>x.classList.toggle("on",!on&&x===b));
+    decorPreview();
+  };
+  $("#decorEmojiCustom").value= decorDraft.emoji&&!EMOJIS.includes(decorDraft.emoji)? decorDraft.emoji : "";
+  decorPreview(); show("decorSheet");
+}
+$("#decorEmojiCustom").oninput=e=>{
+  const v=e.target.value.trim();
+  decorDraft.emoji=v; $("#decorEmojis").querySelectorAll(".emoji-btn").forEach(x=>x.classList.toggle("on",x.dataset.em===v));
+  decorPreview();
+};
+$("#decorSave").onclick=()=>{
+  const d={}; if(decorDraft.color)d.color=decorDraft.color; if(decorDraft.emoji)d.emoji=decorDraft.emoji;
+  if(d.color||d.emoji) days[decorDay]=d; else delete days[decorDay];
+  save(LS.days,days); render(); hideSheets();
+};
+$("#decorClear").onclick=()=>{ delete days[decorDay]; save(LS.days,days); render(); hideSheets(); };
+$("#decorDayBtn").onclick=()=>openDecor(selectedDay);
+
+/* =============== rendering =============== */
 function renderHeader(){
   const d=new Date();
   $("#headerDate").textContent=`${DOW_S[d.getDay()]} · ${MON[d.getMonth()].slice(0,3)} ${d.getDate()}`;
@@ -1440,7 +1728,7 @@ function agendaItemHTML(e,dateStr){
   const timeLabel = e.time
     ? (e.dur ? `${niceTime(e.time)}<br>–${niceTime(addMinutes(e.time,e.dur))}` : niceTime(e.time))
     : "all day";
-  return `<div class="agenda-item ${past?"past":""}" data-ev="${e.id}" data-date="${dateStr}">
+  return `<div class="agenda-item ${past?"past":""} ${e.color?"colored":""}" ${e.color?`style="--evc:${e.color}"`:""} data-ev="${e.id}" data-date="${dateStr}">
     <div class="agenda-time ${e.time?"":"allday"}">${timeLabel}</div>
     <div class="agenda-body"><div class="agenda-title">${esc(e.title)}</div>
     <div class="agenda-meta">${rec}${rem}${notes}</div></div></div>`;
@@ -1449,7 +1737,8 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",
 function renderToday(){
   const t=todayStr();
   const d=new Date();
-  $("#todaySub").textContent=`${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
+  const te=dayDecor(t).emoji;
+  $("#todaySub").textContent=`${te?te+" ":""}${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
   const evs=eventsOn(t), tds=todosOn(t), overdue=todos.filter(x=>!x.done&&x.due&&x.due<t);
   let html="";
   if(!evs.length&&!tds.length&&!overdue.length){
@@ -1464,11 +1753,12 @@ function renderToday(){
   $("#todayList").innerHTML=html;
 }
 function todoRowHTML(x,over){
-  return `<div class="todo-item ${x.done?"done":""}" data-todo="${x.id}">
+  const kill=x.done? killHTML(x) : "";
+  return `<div class="todo-item ${x.done?"done":""} ${kill?"killed":""}" data-todo="${x.id}">
     <button class="todo-check" data-check="${x.id}">${x.done?"✓":""}</button>
     <div class="todo-body"><div class="todo-title">${esc(x.title)}</div>
     ${x.due?`<div class="todo-due ${(!x.done&&x.due<todayStr())?"overdue":""}">${(!x.done&&x.due<todayStr())?"overdue · ":""}${niceDate(x.due)}</div>`:""}</div>
-    <button class="icon-del" data-del="${x.id}">✕</button></div>`;
+    <button class="icon-del" data-del="${x.id}">✕</button>${kill}</div>`;
 }
 function renderTodos(){
   const open=todos.filter(t=>!t.done).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
@@ -1491,17 +1781,20 @@ function renderCal(){
     const other=d.getMonth()!==calCursor.getMonth();
     const evs=eventsOn(ds), tds=todosOn(ds);
     const dots = (evs.length?'<span class="cal-dot"></span>':'') + (tds.length?'<span class="cal-dot t"></span>':'');
-    html+=`<button class="cal-cell ${other?"other":""} ${ds===todayStr()?"today":""} ${ds===selectedDay?"selected":""}" data-day="${ds}">
-      ${d.getDate()}<span class="cal-dots">${dots}</span></button>`;
+    const dec=dayDecor(ds), splat=settings.theme==="blood"? cellSplat(ds) : "";
+    const st=(dec.color?`--dc:${dec.color};--dc-bg:${dec.color}40;`:"")+(splat?`background-image:${splat.replace(/"/g,"'")};`:"");
+    html+=`<button class="cal-cell ${other?"other":""} ${ds===todayStr()?"today":""} ${ds===selectedDay?"selected":""} ${dec.color?"decor":""}" data-day="${ds}"${st?` style="${st}"`:""}>
+      ${dec.emoji?`<span class="cal-emoji">${esc(dec.emoji)}</span>`:""}<span class="cal-num">${d.getDate()}</span><span class="cal-dots">${dots}</span></button>`;
   }
   $("#calGrid").innerHTML=html;
-  $("#dayPanelLabel").textContent=niceDate(selectedDay);
+  const se=dayDecor(selectedDay).emoji;
+  $("#dayPanelLabel").textContent=(se?se+" ":"")+niceDate(selectedDay);
   const evs=eventsOn(selectedDay), tds=todosOn(selectedDay);
   let ph=evs.map(e=>agendaItemHTML(e,selectedDay)).join("")+tds.map(x=>todoRowHTML(x)).join("");
   if(!ph) ph=`<div class="empty-state" style="padding:18px"><p>Nothing here.</p></div>`;
   $("#dayPanelList").innerHTML=ph;
 }
-function render(){ renderHeader(); renderToday(); renderTodos(); renderCal(); }
+function render(){ applyTheme(); renderHeader(); renderToday(); renderTodos(); renderCal(); }
 
 /* =============== sheets =============== */
 const backdrop=$("#backdrop");
@@ -1519,7 +1812,7 @@ function hideSheets(){
 backdrop.onclick=hideSheets;
 
 /* ---------- event sheet ---------- */
-let editingId=null, editingOccDate=null;
+let editingId=null, editingOccDate=null, evColor="";
 const dayChips=$("#evDayChips");
 DOW_S.forEach((d,i)=>{
   const c=document.createElement("button"); c.className="chip"; c.textContent=d; c.dataset.d=i;
@@ -1554,6 +1847,7 @@ function openEventSheet(ev,dateStr,occDate){
   $("#evRem").value=ev?(ev.rem??""):"";
   $("#evUntil").value=ev&&ev.rec&&ev.rec.until?ev.rec.until:"";
   $("#evNotes").value=ev?(ev.notes||""):"";
+  evColor=ev&&ev.color||""; buildSwatches($("#evSwatches"),evColor,c=>{evColor=c;});
   dayChips.querySelectorAll(".chip").forEach(c=>c.classList.toggle("on", !!(ev&&ev.rec&&ev.rec.days&&ev.rec.days.includes(Number(c.dataset.d)))));
   $("#evDaysField").style.display = (ev&&ev.rec&&ev.rec.freq==="weekly")?"block":"none";
   $("#evUntilField").style.display = (ev&&ev.rec)?"block":"none";
@@ -1582,7 +1876,7 @@ $("#evSave").onclick=()=>{
     dur=toMin(end)-toMin(time);
     if(dur<=0)dur+=1440; // end before start = runs past midnight
   }
-  const data={title,date:$("#evDate").value,time,dur,rec,rem:$("#evRem").value,notes:$("#evNotes").value.trim()};
+  const data={title,date:$("#evDate").value,time,dur,rec,rem:$("#evRem").value,notes:$("#evNotes").value.trim(),color:evColor||undefined};
   if(editingId){ const e=events.find(x=>x.id===editingId); Object.assign(e,data); }
   else events.push(Object.assign({id:uid()},data));
   save(LS.events,events); render(); hideSheets();
@@ -1612,7 +1906,11 @@ function syncSettingsUI(){
   $("#rngRate").value=settings.rate;
   $("#selDefRem").value=settings.defRem;
   $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
+  $("#selTheme").value=settings.theme||"classic";
+  $("#selKill").value=settings.kill||"random";
 }
+$("#selTheme").onchange=e=>{settings.theme=e.target.value;save(LS.settings,settings);render()};
+$("#selKill").onchange=e=>{settings.kill=e.target.value;save(LS.settings,settings);render()};
 $("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();refreshOlUI(olRunning);show("settingsSheet");
   if("Notification" in window && Notification.permission==="default"){try{Notification.requestPermission()}catch(e){}}
 };
@@ -1623,7 +1921,7 @@ $("#rngRate").oninput=e=>{settings.rate=Number(e.target.value);save(LS.settings,
 $("#selDefRem").onchange=e=>{settings.defRem=e.target.value;save(LS.settings,settings)};
 $("#testVoice").onclick=()=>{unlockVoice();speak("Specter online. I hear you through the glasses.",true)};
 $("#btnExport").onclick=()=>{
-  const blob=new Blob([JSON.stringify({events,todos,settings},null,2)],{type:"application/json"});
+  const blob=new Blob([JSON.stringify({events,todos,settings,days},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="specter-backup.json";a.click();
 };
 $("#btnImport").onclick=()=>$("#fileImport").click();
@@ -1729,8 +2027,8 @@ $("#fileImport").onchange=e=>{
     else{
       try{
         const d=JSON.parse(txt);
-        if(d.events)events=d.events; if(d.todos)todos=d.todos; if(d.settings)settings=Object.assign(settings,d.settings);
-        save(LS.events,events);save(LS.todos,todos);save(LS.settings,settings);render();hideSheets();
+        if(d.events)events=d.events; if(d.todos)todos=d.todos; if(d.settings)settings=Object.assign(settings,d.settings); if(d.days)days=d.days;
+        save(LS.days,days); save(LS.events,events);save(LS.todos,todos);save(LS.settings,settings);render();hideSheets();
       }catch(err){alert("That file didn't parse. Import needs a SPECTER export (.json) or a calendar (.ics).")}
     }
     e.target.value="";
@@ -1870,7 +2168,13 @@ document.querySelectorAll(".tab[data-view]").forEach(t=>{
 $("#tabSpeak").onclick=()=>{unlockVoice();readAgenda(todayStr());};
 document.addEventListener("click",e=>{
   const chk=e.target.closest("[data-check]");
-  if(chk){const t=todos.find(x=>x.id===chk.dataset.check); if(t){t.done=!t.done;save(LS.todos,todos);render();} return;}
+  if(chk){
+    const t=todos.find(x=>x.id===chk.dataset.check); if(!t) return;
+    const row=chk.closest(".todo-item");
+    if(!t.done && row && killStyle(t)!=="strike") killTask(t,row);
+    else{ t.done=!t.done; save(LS.todos,todos); render(); }
+    return;
+  }
   const del=e.target.closest("[data-del]");
   if(del){todos=todos.filter(x=>x.id!==del.dataset.del);save(LS.todos,todos);render();return;}
   const cell=e.target.closest("[data-day]");
