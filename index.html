@@ -292,6 +292,10 @@ nav{
 .cal-cell.decor.today{box-shadow:inset 0 0 0 2px var(--ecto)}
 .cal-emoji{position:absolute;top:2px;right:3px;font-size:11px;line-height:1}
 .cal-num{position:relative}
+.cal-cell.past .cal-num{opacity:.5}
+.cal-cell.past .cal-dots{opacity:.5}
+.slash{position:absolute;inset:0;background-size:100% 100%;pointer-events:none;opacity:.88}
+.cal-emoji{z-index:1}
 .agenda-item.colored{border-left:4px solid var(--evc)}
 .swatches{display:grid;grid-template-columns:repeat(9,1fr);gap:7px;max-width:380px}
 .swatch{
@@ -538,6 +542,10 @@ nav{
     </select>
   </div>
   <div class="set-row">
+    <div><div class="s-label">Slash past days</div><div class="s-sub">Days that are gone get cut and bleed on the calendar</div></div>
+    <div class="toggle" id="tglSlash"></div>
+  </div>
+  <div class="set-row">
     <div><div class="s-label">Hands-free mode</div><div class="s-sub">One orb tap starts a voice session: say commands, answer “yes/no” aloud, chain until “that's all”</div></div>
     <div class="toggle" id="tglHandsFree"></div>
   </div>
@@ -689,8 +697,8 @@ const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,engine:"device",oaiVoice:"onyx"},load(LS.settings,{}));
-const APP_VERSION="2026.10.07";
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx"},load(LS.settings,{}));
+const APP_VERSION="2026.10.07b";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -1819,6 +1827,29 @@ function applyTheme(){
   if(meta) meta.content=getComputedStyle(root).getPropertyValue("--void").trim()||"#0D0B10";
 }
 const cellSplats={};
+// past days: 2 or 3 knife slashes with drips, a handful of variants reused across the grid
+const slashCache={};
+function slashSVG(seed){
+  const r=rng(seed), f=n=>n.toFixed(1); let g="";
+  const n=2+(r()<.5?1:0), gap=15+r()*5, x0=50+r()*6, tilt=r()*8;
+  for(let i=0;i<n;i++){
+    const off=(i-(n-1)/2)*gap;
+    const sx=x0+off+26+tilt, sy=8+r()*6, ex=x0+off-26-tilt, ey=88+r()*6;   // top-right → bottom-left
+    const mx=(sx+ex)/2, my=(sy+ey)/2, len=Math.hypot(ex-sx,ey-sy), nx=-(ey-sy)/len, ny=(ex-sx)/len, w=6+r()*3;
+    g+=`<path d="M${f(sx)} ${f(sy)}Q${f(mx+nx*w)} ${f(my+ny*w)} ${f(ex)} ${f(ey)}Q${f(mx-nx*w*.5)} ${f(my-ny*w*.5)} ${f(sx)} ${f(sy)}Z"/>`;
+    for(let k=0,dn=1+Math.floor(r()*2);k<dn;k++){               // drips hanging off the cut
+      const t=.35+r()*.5, px=sx+(ex-sx)*t, py=sy+(ey-sy)*t, dw=1.6+r()*1.4, dl=6+r()*16;
+      if(py+dl>96) continue;
+      g+=`<rect x="${f(px-dw/2)}" y="${f(py)}" width="${f(dw)}" height="${f(dl)}" rx="${f(dw/2)}"/><circle cx="${f(px)}" cy="${f(py+dl)}" r="${f(dw*.8)}"/>`;
+    }
+  }
+  for(let k=0,dn=3+Math.floor(r()*5);k<dn;k++) g+=`<circle cx="${f(10+r()*80)}" cy="${f(10+r()*80)}" r="${f(.6+r()*1.6)}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><g fill="#B3121F" stroke="#5E0710" stroke-width=".8">${g}</g></svg>`;
+}
+function cellSlash(ds){
+  const v=Math.floor(rng("slash"+ds)()*8);
+  return slashCache[v]||(slashCache[v]=svgURI(slashSVG("slashv"+v)));
+}
 function cellSplat(ds){
   // blood theme: roughly a third of the days get spattered
   const r=rng("cell"+ds); if(r()>.34) return "";
@@ -1983,9 +2014,10 @@ function renderCal(){
     const evs=eventsOn(ds), tds=todosOn(ds);
     const dots = (evs.length?'<span class="cal-dot"></span>':'') + (tds.length?'<span class="cal-dot t"></span>':'');
     const dec=dayDecor(ds), splat=settings.theme==="blood"? cellSplat(ds) : "";
+    const past=ds<todayStr() && settings.slashPast!==false;
     const st=(dec.color?`--dc:${dec.color};--dc-bg:${dec.color}40;`:"")+(splat?`background-image:${splat.replace(/"/g,"'")};`:"");
-    html+=`<button class="cal-cell ${other?"other":""} ${ds===todayStr()?"today":""} ${ds===selectedDay?"selected":""} ${dec.color?"decor":""}" data-day="${ds}"${st?` style="${st}"`:""}>
-      ${dec.emoji?`<span class="cal-emoji">${esc(dec.emoji)}</span>`:""}<span class="cal-num">${d.getDate()}</span><span class="cal-dots">${dots}</span></button>`;
+    html+=`<button class="cal-cell ${other?"other":""} ${ds===todayStr()?"today":""} ${ds===selectedDay?"selected":""} ${dec.color?"decor":""} ${past?"past":""}" data-day="${ds}"${st?` style="${st}"`:""}>
+      ${past?`<span class="slash" style="background-image:${cellSlash(ds).replace(/"/g,"'")}"></span>`:""}${dec.emoji?`<span class="cal-emoji">${esc(dec.emoji)}</span>`:""}<span class="cal-num">${d.getDate()}</span><span class="cal-dots">${dots}</span></button>`;
   }
   $("#calGrid").innerHTML=html;
   const se=dayDecor(selectedDay).emoji;
@@ -2120,8 +2152,10 @@ function syncSettingsUI(){
   $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
   $("#selTheme").value=settings.theme||"classic";
   $("#selKill").value=settings.kill||"random";
+  $("#tglSlash").classList.toggle("on",settings.slashPast!==false);
 }
 $("#selTheme").onchange=e=>{settings.theme=e.target.value;save(LS.settings,settings);render()};
+$("#tglSlash").onclick=()=>{settings.slashPast=settings.slashPast===false;save(LS.settings,settings);syncSettingsUI();renderCal()};
 $("#selKill").onchange=e=>{settings.kill=e.target.value;save(LS.settings,settings);render()};
 $("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();refreshOlUI(olRunning);show("settingsSheet");
   if("Notification" in window && Notification.permission==="default"){try{Notification.requestPermission()}catch(e){}}
