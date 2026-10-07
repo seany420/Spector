@@ -553,7 +553,30 @@ nav{
     <div><div class="s-label">Voice character</div><div class="s-sub">Horror host: a deep, slow, theatrical narrator</div></div>
     <select id="selVoiceStyle" class="set-select"><option value="host">Horror host</option><option value="plain">Plain</option></select>
   </div>
-  <div class="set-row">
+  <div class="set-row" style="display:block">
+    <div class="set-row" style="border:none;padding:0 0 10px">
+      <div><div class="s-label">Voice engine</div><div class="s-sub">OpenAI sounds far more human. Uses your own API key and costs a fraction of a cent per line.</div></div>
+      <select id="selEngine" class="set-select"><option value="device">Phone voices</option><option value="openai">OpenAI</option></select>
+    </div>
+    <div id="oaiBox" style="display:none">
+      <input type="password" id="oaiKey" placeholder="OpenAI API key (sk-…)" autocomplete="off" style="width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;color:var(--bone);font-size:14px;font-family:var(--mono);margin-bottom:8px">
+      <div class="row2" style="margin-bottom:8px">
+        <select id="selOaiVoice" class="set-select">
+          <option value="onyx">Onyx (deep)</option><option value="ash">Ash</option><option value="ballad">Ballad (theatrical)</option>
+          <option value="echo">Echo</option><option value="fable">Fable (British)</option><option value="sage">Sage</option>
+          <option value="verse">Verse</option><option value="alloy">Alloy</option><option value="coral">Coral</option>
+          <option value="nova">Nova</option><option value="shimmer">Shimmer</option>
+        </select>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="btnOaiSave" style="margin:0;flex:1;padding:9px">Save key</button>
+          <button class="btn btn-ghost" id="btnOaiForget" style="margin:0;flex:1;padding:9px">Remove</button>
+        </div>
+      </div>
+      <div class="s-sub">The key stays on this phone only: never in backups, never synced. Anyone holding your phone unlocked could find it, so set a monthly spend limit at platform.openai.com.</div>
+      <div id="oaiStatus" style="font-size:12px;color:var(--bone-dim);margin-top:8px;font-family:var(--mono)"></div>
+    </div>
+  </div>
+  <div class="set-row" id="deviceVoiceRow">
     <div><div class="s-label">Voice</div><div class="s-sub">Deep British male voices suit the host best</div></div>
     <select id="selVoice" class="set-select" style="max-width:52%"></select>
   </div>
@@ -666,8 +689,8 @@ const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true},load(LS.settings,{}));
-const APP_VERSION="2026.10.05b";
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,engine:"device",oaiVoice:"onyx"},load(LS.settings,{}));
+const APP_VERSION="2026.10.07";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -750,8 +773,17 @@ function speak(text, force){
   const myCb=afterTTS; afterTTS=null; // this utterance claims the pending callback
   let called=false;
   const done=()=>{ if(called)return; called=true; orb.classList.remove("speaking"); if(myCb)setTimeout(myCb,250); };
-  if(!("speechSynthesis" in window)) { done(); return; }
   if(!force && !settings.confirm) { done(); return; }
+  stopAudio();
+  if(settings.engine==="openai" && oaiKey()){
+    speakOpenAI(text, done, ()=>speakDevice(text, done));
+    return;
+  }
+  speakDevice(text, done);
+}
+function speakDevice(text, done){
+  if(!("speechSynthesis" in window)) { done(); return; }
+  let called=false; const fin=()=>{ if(called)return; called=true; done(); };
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
@@ -760,14 +792,92 @@ function speak(text, force){
     u.pitch=host? (Number(settings.pitch)||0.7) : 1;
     const v=pickVoice(); if(v){ u.voice=v; u.lang=v.lang; }
     u.onstart=()=>orb.classList.add("speaking");
-    u.onend=done;
-    u.onerror=done;
+    u.onend=fin;
+    u.onerror=fin;
     speechSynthesis.speak(u);
     // watchdog: some iOS builds drop onend
-    setTimeout(()=>{ if(!called && !speechSynthesis.speaking) done(); }, Math.min(20000, 2500+text.length*70));
-  }catch(e){ done(); }
+    setTimeout(()=>{ if(!called && !speechSynthesis.speaking) fin(); }, Math.min(20000, 2500+text.length*70));
+  }catch(e){ fin(); }
 }
+
+/* ---------- OpenAI voice (gpt-4o-mini-tts) ----------
+   Called straight from the page with the user's own key. The key lives in its own
+   localStorage slot so it never lands in settings, JSON backups, or cloud sync. */
+const OAI_LS="specter_openai_key";
+const oaiKey=()=>{ try{ return localStorage.getItem(OAI_LS)||""; }catch(e){ return ""; } };
+const OAI_HOST=`Voice: a velvet-voiced horror film host from a 1950s midnight movie, a rich, deep baritone with a gleeful, ghoulish undertone.
+Tone: theatrical and conspiratorial, as if letting the listener in on a delicious secret. Savor every word.
+Pacing: slow and deliberate. Linger on the ellipses. Let a soft, wicked chuckle slip out where the script says "heh heh".
+Clarity: say every time, date, and name crisply so nothing is misheard.`;
+const OAI_PLAIN="Calm, warm, and clear. Moderate pace. Say every time, date, and name crisply.";
+let ttsAudio=null, audioUnlocked=false;
+const oaiCache=new Map();             // text|voice|style → blob URL, so repeat lines cost nothing
+function audioEl(){ if(!ttsAudio){ ttsAudio=new Audio(); ttsAudio.preload="auto"; } return ttsAudio; }
+function silentWav(){
+  // 0.05s of silence as a WAV data URI (8 kHz, 8-bit mono)
+  const n=400, b=new Uint8Array(44+n), v=new DataView(b.buffer), w=(o,t)=>[...t].forEach((c,i)=>b[o+i]=c.charCodeAt(0));
+  w(0,"RIFF"); v.setUint32(4,36+n,true); w(8,"WAVEfmt "); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,8000,true); v.setUint32(28,8000,true); v.setUint16(32,1,true); v.setUint16(34,8,true); w(36,"data"); v.setUint32(40,n,true);
+  b.fill(128,44);
+  return "data:audio/wav;base64,"+btoa(String.fromCharCode(...b));
+}
+function unlockAudio(){
+  // iOS only lets a page play sound from an element first started by a tap
+  if(audioUnlocked || (ttsAudio && !ttsAudio.paused)) return;
+  try{
+    const a=audioEl();
+    a.src=silentWav();
+    const pr=a.play(); if(pr&&pr.then) pr.then(()=>{ a.pause(); audioUnlocked=true; }).catch(()=>{});
+  }catch(e){}
+}
+function stopAudio(){
+  try{ speechSynthesis.cancel(); }catch(e){}
+  if(ttsAudio){ try{ ttsAudio.onended=ttsAudio.onerror=null; ttsAudio.pause(); }catch(e){} }
+}
+function oaiStatus(t){ const el=document.getElementById("oaiStatus"); if(el) el.textContent=t; }
+async function speakOpenAI(text, done, fallback){
+  let called=false; const fin=()=>{ if(called)return; called=true; done(); };
+  const input=text.replace(/\b([AP]) M\b/g,"$1M");    // "3 P M" reads better as "3 PM" here
+  const voice=settings.oaiVoice||"onyx", style=isHost()?"host":"plain";
+  const key=input+"|"+voice+"|"+style;
+  const myTurn=++oaiTurn;
+  orb.classList.add("speaking");
+  try{
+    let url=oaiCache.get(key);
+    if(!url){
+      const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),15000);
+      const r=await fetch("https://api.openai.com/v1/audio/speech",{
+        method:"POST", signal:ctl.signal,
+        headers:{"Authorization":"Bearer "+oaiKey(),"Content-Type":"application/json"},
+        body:JSON.stringify({model:"gpt-4o-mini-tts",voice,input,response_format:"mp3",
+          instructions: style==="host"? OAI_HOST : OAI_PLAIN})
+      });
+      clearTimeout(to);
+      if(!r.ok){
+        const j=await r.json().catch(()=>null), msg=(j&&j.error&&j.error.message)||("HTTP "+r.status);
+        throw new Error(r.status===401? "key rejected (401)" : r.status===429? "out of credit or rate-limited (429)" : msg);
+      }
+      url=URL.createObjectURL(await r.blob());
+      oaiCache.set(key,url);
+      if(oaiCache.size>40){ const k=oaiCache.keys().next().value; URL.revokeObjectURL(oaiCache.get(k)); oaiCache.delete(k); }
+    }
+    if(myTurn!==oaiTurn){ fin(); return; }          // something newer started talking meanwhile
+    const a=audioEl();
+    a.onended=fin; a.onerror=fin;
+    a.src=url; a.playbackRate=settings.rate||1; try{ a.preservesPitch=true; }catch(e){}
+    await a.play();
+    audioUnlocked=true;
+    oaiStatus("OpenAI voice working ✓");
+  }catch(e){
+    if(myTurn!==oaiTurn){ fin(); return; }
+    oaiStatus("OpenAI voice failed ("+(e.name==="AbortError"?"timed out":e.message)+"). Using the phone voice for now.");
+    called=true; fallback();                          // phone voice takes over and calls done itself
+  }
+}
+let oaiTurn=0;
 const announce = t=>{ if(settings.announce) speak(t,true); };
+document.addEventListener("touchend",unlockAudio,{passive:true});
+document.addEventListener("click",unlockAudio);
 /* ---------- voice choice + horror-host script ---------- */
 // best guesses for a deep, theatrical English voice across iOS / Mac / Android / Windows
 const HOST_VOICES=["Daniel","Arthur","Oliver","Google UK English Male","Microsoft Ryan","Microsoft George","Microsoft Thomas","Rishi","Gordon","Aaron","Fred","Alex","Microsoft Guy","Microsoft David","Google US English"];
@@ -794,7 +904,8 @@ function fillVoiceSelect(){
 function pickVoiceAutoName(){ const keep=settings.voiceName; settings.voiceName=""; const v=pickVoice(); settings.voiceName=keep; return v? v.name : ""; }
 const isHost=()=>settings.voiceStyle==="host";
 const pickOne=a=>a[Math.floor(Math.random()*a.length)];
-const say=(plain,host)=>isHost()? host : plain;
+const say=(plain,host)=>isHost()? (Array.isArray(host)? pickOne(host) : host) : plain;
+const cap=s=>s[0].toUpperCase()+s.slice(1);
 
 /* =============== reminder engine =============== */
 function occKey(ev,dateStr){ return ev.id+"|"+dateStr; }
@@ -822,8 +933,15 @@ function fireReminder(ev){
   const when = lead===0? "now" : lead>=60? `in ${lead/60} hour${lead>=120?"s":""}` : `in ${lead} minutes`;
   const sub = `${niceTime(ev.time)}${ev.notes? " · "+ev.notes:""}`;
   showBanner(ev.title, `${when==="now"?"Starting now":"Coming up "+when} · ${sub}`);
-  announce(say(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${spokenTime(ev.time)}.`,
-    `Pardon the intrusion... ${ev.title} ${when==="now"?"begins now. Right now":"begins "+when}. At ${spokenTime(ev.time)}. Don't keep it waiting.`));
+  const tm=spokenTime(ev.time);
+  announce(say(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${tm}.`, when==="now"? [
+      `It's time... ${ev.title}. Right now, at ${tm}. They're waiting for you. They've been waiting a long time.`,
+      `Heh heh heh... ${ev.title}. ${tm}. Now. Don't make them come looking for you.`
+    ] : [
+      `Pardon the intrusion... ${ev.title} rises ${when}. At ${tm}. It won't wait forever.`,
+      `Psst... ${when}, ${ev.title}. At ${tm}. I'd start walking, if I were you. Walking... not running. Yet.`,
+      `A warning from beyond... ${ev.title}, ${when}. ${tm}. Consider yourself haunted.`
+    ]));
   if("Notification" in window && Notification.permission==="granted"){
     try{ new Notification("SPECTER · "+ev.title,{body:sub}); }catch(e){}
   }
@@ -1044,35 +1162,45 @@ function executeIntent(it){
     case "add-event":{
       events.push({id:uid(),title:it.title,date:it.date,time:it.time,dur:it.dur||null,rec:it.rec,rem:it.rem==null?"":String(it.rem),notes:""});
       save(LS.events,events); render();
-      speak(say(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`,
-        `It is written. ${it.title}... ${niceDate(it.date)}${it.time? ", at "+spokenTime(it.time):""}${it.rec? ". And it will return, again and again":""}.`));
+      { const when=`${niceDate(it.date)}${it.time? ", at "+spokenTime(it.time):""}`, again=it.rec? " And like all the best monsters... it keeps coming back.":"";
+      speak(say(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`, [
+        `It is written... ${it.title}. ${when}. There's no escaping it now.${again}`,
+        `Carved in stone. ${it.title}, ${when}. Heh heh.${again}`,
+        `${it.title}... ${when}. I've sealed it in the ledger. In blood, naturally.${again}`])); }
       return true;
     }
     case "add-todo":{
       todos.push({id:uid(),title:it.title,due:it.due,done:false});
       save(LS.todos,todos); render();
-      speak(say(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`,
-        `${it.title}. Added to the list${it.due? ". It comes due "+niceDate(it.due)+"":""}. The list is always hungry.`));
+      { const due=it.due? ` It comes due ${niceDate(it.due)}.`:"";
+      speak(say(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`, [
+        `${it.title}... buried on your list.${due} It'll keep. Things like that always keep.`,
+        `Another one for the list. ${it.title}.${due} The list is always hungry.`,
+        `${it.title}. Into the crypt it goes.${due} Don't forget about it... it won't forget about you.`])); }
       return true;
     }
     case "complete-todo":{
       const t=findByTitle(todos.filter(x=>!x.done), it.query);
-      if(!t){ speak(`I couldn't find ${it.query} on your list.`); return false; }
+      if(!t){ speak(say(`I couldn't find ${it.query} on your list.`,`${it.query}? I've searched every crypt on your list. Nothing by that name.`)); return false; }
       t.done=true; save(LS.todos,todos); render();
-      speak(say(`${t.title}. Done. The list is satisfied, for now.`, `${t.title}... is finished. Dead and buried. The list is satisfied, for now.`));
+      speak(say(`${t.title}. Done. The list is satisfied, for now.`, [
+        `${t.title}... dead and buried. Heh heh. One less thing haunting you.`,
+        `${t.title}? Finished. Put out of its misery.`,
+        `${t.title}. It is done. Rest in peace... the task, I mean. Not you. Not yet.`]));
       return true;
     }
     case "delete":{
       const t=findByTitle(todos,it.query);
-      if(t){ todos=todos.filter(x=>x.id!==t.id); save(LS.todos,todos); render(); speak(`Deleted task ${t.title}.`); return true; }
+      if(t){ todos=todos.filter(x=>x.id!==t.id); save(LS.todos,todos); render(); speak(say(`Deleted task ${t.title}.`,`${t.title}... vanished without a trace. As if it was never here at all.`)); return true; }
       const e=findByTitle(events,it.query);
-      if(e){ events=events.filter(x=>x.id!==e.id); save(LS.events,events); render(); speak(`Deleted event ${e.title}.`); return true; }
-      speak(`Nothing named ${it.query} to delete.`); return false;
+      if(e){ events=events.filter(x=>x.id!==e.id); save(LS.events,events); render(); speak(say(`Deleted event ${e.title}.`,`${e.title}... erased from the ledger. Some things are better left forgotten.`)); return true; }
+      speak(say(`Nothing named ${it.query} to delete.`,`${it.query}? Nothing by that name lurks here.`)); return false;
     }
     case "query-agenda": readAgenda(it.date); return true;
     case "query-todos": readTodos(); return true;
     default:
-      speak("I didn't catch a command in that. Try, add dentist Tuesday at 3 PM.");
+      speak(say("I didn't catch a command in that. Try, add dentist Tuesday at 3 PM.",
+        "Speak up, my friend... the dead are listening, but even they couldn't make that out. Try: add dentist Tuesday at 3 PM."));
       return false;
   }
 }
@@ -1088,21 +1216,26 @@ function readAgenda(dateStr){
   }
   const on = /^(today|tomorrow)$/.test(label)? label : "on "+label;
   if(!evs.length && !tds.length){
-    speak(pickOne([`Nothing awaits you ${on}. Not a soul. Enjoy the silence... while it lasts.`,
-      `${on[0].toUpperCase()+on.slice(1)}, the house is empty. Nothing scheduled. How... peaceful.`]),true); return;
+    speak(pickOne([`Nothing awaits you ${on}. An empty grave... how refreshing.`,
+      `${cap(on)}? Not a soul. Even the ghosts took the day off.`,
+      `The ledger is blank ${on}. Suspicious, isn't it? Heh heh heh.`,
+      `${cap(on)}, the house is empty. Nothing scheduled. Enjoy the silence... while it lasts.`]),true); return;
   }
-  const n=evs.length+tds.length;
-  const parts=[pickOne([`Good evening. ${on[0].toUpperCase()+on.slice(1)}, ${n===1?"one thing awaits you":n+" things await you"}.`,
-    `Ah... ${label}. Let us see what fate has arranged. ${n===1?"Just one thing":n+" things"}.`])];
-  evs.forEach((e,i)=>parts.push(e.time? `At ${spokenTime(e.time)}... ${e.title}.` : `All day long... ${e.title}.`));
-  if(tds.length) parts.push(`And lurking on your list: `+tds.map(t=>t.title).join(". ")+".");
-  parts.push(pickOne(["Do try to survive it.","Sleep well.","I'll be watching.","Pleasant dreams."]));
+  const n=evs.length+tds.length, things=n===1? "one thing" : n+" things";
+  const parts=[pickOne([`Good evening... ${cap(on)}, ${n===1?"one thing is":things+" are"} waiting for you. They're very patient.`,
+    `Ah, ${label}. I've been reading the ledger. ${cap(things)}... and ${n===1?"it knows":"they all know"} your name.`,
+    `Heh heh heh... come closer. ${cap(on)}, fate has penciled in ${things}.`,
+    `The candles are lit. ${cap(on)}, ${things} rise${n===1?"s":""} from the grave.`])];
+  evs.forEach(e=>parts.push(e.time? pickOne([`At ${spokenTime(e.time)}... ${e.title}.`,`At ${spokenTime(e.time)}... ${e.title}.`,`${spokenTime(e.time)}... ${e.title} awaits.`])
+                                   : pickOne([`All day long, ${e.title} lingers.`,`All day... ${e.title}, lurking.`])));
+  if(tds.length) parts.push(pickOne([`And clawing at the edge of your list: `,`Still unburied on your list: `,`And something stirs on your list: `])+tds.map(t=>t.title).join(". ")+".");
+  parts.push(pickOne(["Do try to survive it.","Pleasant screams.","Sleep tight... if you can.","I'll be watching.","Don't say I didn't warn you. Heh heh heh.","Until then... rest in peace. Or at least, rest."]));
   speak(parts.join(" "),true);
 }
 function readTodos(){
   const open=todos.filter(t=>!t.done);
-  if(!open.length){ speak(say("Your list is empty. Suspiciously empty.","Your list is empty. Suspiciously... empty."),true); return; }
-  speak(say(`${open.length} open task${open.length!==1?"s":""}. `,`${open.length} unfinished thing${open.length!==1?"s":""} still breathing. `)+open.map(t=>t.title).join(". ")+".",true);
+  if(!open.length){ speak(say("Your list is empty. Suspiciously empty.",["Your list is empty. Suspiciously... empty.","Nothing left on the list. Every last one, dead and buried. Heh heh."]),true); return; }
+  speak(say(`${open.length} open task${open.length!==1?"s":""}. `,[`${open.length} unfinished thing${open.length!==1?"s":""}, still breathing. `,`From the list, ${open.length} restless soul${open.length!==1?"s":""}. `])+open.map(t=>t.title).join(". ")+".",true);
 }
 
 /* =============== ICS export (Outlook / Apple / Google) =============== */
@@ -1977,6 +2110,12 @@ function syncSettingsUI(){
   $("#tglReadTap").classList.toggle("on",settings.readTap!==false);
   loadVoices();
   $("#versionNote").textContent="SPECTER version "+APP_VERSION;
+  $("#selEngine").value=settings.engine||"device";
+  $("#selOaiVoice").value=settings.oaiVoice||"onyx";
+  $("#oaiBox").style.display= settings.engine==="openai"? "block" : "none";
+  $("#deviceVoiceRow").style.display= settings.engine==="openai"? "none" : "";
+  $("#oaiKey").placeholder= oaiKey()? "Key saved ✓ (paste to replace)" : "OpenAI API key (sk-…)";
+  if(settings.engine==="openai" && !oaiKey()) oaiStatus("Paste your key and tap Save key.");
   $("#selDefRem").value=settings.defRem;
   $("#tglIcsTasks").classList.toggle("on",settings.icsTasks!==false);
   $("#selTheme").value=settings.theme||"classic";
@@ -1993,7 +2132,16 @@ $("#tglConfirm").onclick=e=>{settings.confirm=!settings.confirm;save(LS.settings
 $("#rngRate").oninput=e=>{settings.rate=Number(e.target.value);save(LS.settings,settings)};
 $("#selDefRem").onchange=e=>{settings.defRem=e.target.value;save(LS.settings,settings)};
 $("#testVoice").onclick=()=>{unlockVoice();speak(say("Specter online. I hear you through the glasses.",
-  "Good evening. I am your host. Every appointment, every errand, every... obligation. I remember them all."),true)};
+  "Good evening... I am your host. Every appointment. Every errand. Every... obligation. I remember them all. Heh heh heh."),true)};
+$("#selEngine").onchange=e=>{settings.engine=e.target.value;save(LS.settings,settings);syncSettingsUI()};
+$("#selOaiVoice").onchange=e=>{settings.oaiVoice=e.target.value;save(LS.settings,settings)};
+$("#btnOaiSave").onclick=()=>{
+  const v=$("#oaiKey").value.trim();
+  if(!/^sk-/.test(v)) return oaiStatus("That doesn't look like an OpenAI key (they start with sk-).");
+  try{ localStorage.setItem(OAI_LS,v); }catch(e){}
+  $("#oaiKey").value=""; syncSettingsUI(); oaiStatus("Key saved. Tap Test to hear it.");
+};
+$("#btnOaiForget").onclick=()=>{ try{ localStorage.removeItem(OAI_LS); }catch(e){} syncSettingsUI(); oaiStatus("Key removed from this phone."); };
 $("#selVoiceStyle").onchange=e=>{settings.voiceStyle=e.target.value;save(LS.settings,settings);loadVoices()};
 $("#selVoice").onchange=e=>{settings.voiceName=e.target.value;save(LS.settings,settings)};
 $("#rngPitch").oninput=e=>{settings.pitch=Number(e.target.value);save(LS.settings,settings)};
@@ -2185,7 +2333,7 @@ function handleUtterance(text){
   }
   vsMode="command";
   if(STOP_RX.test(text.trim())){
-    speak(say("Closing. I'll be here.","Until next time. I'll be here... waiting."),true);
+    speak(say("Closing. I'll be here.",["Until next time... pleasant screams.","I'll be here. I'm always here... waiting."]),true);
     hideSheets(); return;
   }
   const it=parseCommand(text);
@@ -2206,7 +2354,8 @@ function handleUtterance(text){
   setVSState("say “yes” or “no”");
   if(settings.handsFree || settings.confirm){
     afterTTS = settings.handsFree ? ()=>{ if(vsMode==="confirm") startListening(); } : null;
-    speak(`${d.kind}: ${d.main}. ${d.sub?d.sub.replace(/·/g,",").replace(/⏱/g,"reminder"):""} Yes or no?`,true);
+    const sub=d.sub? d.sub.replace(/·/g,",").replace(/⏱/g,"reminder")+"." : "";
+    speak(say(`${d.kind}: ${d.main}. ${sub} Yes or no?`,`${d.kind}... ${d.main}. ${sub} Shall I make it so? Yes... or no?`),true);
   }
 }
 function confirmPending(){
@@ -2226,7 +2375,7 @@ function cancelPending(silent){
   $("#vsResult").style.display="none";$("#vsActions").style.display="none";
   if(silent) return;
   $("#vsTranscript").innerHTML='<span class="hint">Cancelled. Say another command, or “that’s all.”</span>';
-  if(settings.handsFree){ setVSState("cancelled — listening"); afterTTS=rearm; speak("Cancelled.",true); }
+  if(settings.handsFree){ setVSState("cancelled — listening"); afterTTS=rearm; speak(say("Cancelled.","Cancelled. As if it never happened."),true); }
   else setVSState("cancelled");
 }
 $("#vsConfirm").onclick=()=>confirmPending();
