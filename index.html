@@ -580,6 +580,10 @@ nav{
           <button class="btn btn-ghost" id="btnOaiForget" style="margin:0;flex:1;padding:9px">Remove</button>
         </div>
       </div>
+      <div class="set-row" style="border:none;padding:4px 0 10px">
+        <div><div class="s-label" style="font-size:14px">Let the host improvise</div><div class="s-sub">OpenAI writes a brand new monologue each time you hear a day or your list (horror host only). Sends those titles to OpenAI. If it drops or changes anything, the script is used instead.</div></div>
+        <div class="toggle" id="tglImprov"></div>
+      </div>
       <div class="s-sub">The key stays on this phone only: never in backups, never synced. Anyone holding your phone unlocked could find it, so set a monthly spend limit at platform.openai.com.</div>
       <div id="oaiStatus" style="font-size:12px;color:var(--bone-dim);margin-top:8px;font-family:var(--mono)"></div>
     </div>
@@ -697,8 +701,8 @@ const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx"},load(LS.settings,{}));
-const APP_VERSION="2026.10.07b";
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx",improvise:false},load(LS.settings,{}));
+const APP_VERSION="2026.10.15";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -912,8 +916,408 @@ function fillVoiceSelect(){
 function pickVoiceAutoName(){ const keep=settings.voiceName; settings.voiceName=""; const v=pickVoice(); settings.voiceName=keep; return v? v.name : ""; }
 const isHost=()=>settings.voiceStyle==="host";
 const pickOne=a=>a[Math.floor(Math.random()*a.length)];
-const say=(plain,host)=>isHost()? (Array.isArray(host)? pickOne(host) : host) : plain;
-const cap=s=>s[0].toUpperCase()+s.slice(1);
+// host side may be a string, a pool of strings, or a function (so pools are only drawn from in host mode)
+const say=(plain,host)=>isHost()? (typeof host==="function"? host() : Array.isArray(host)? pickOne(host) : host) : plain;
+const cap=s=>s? s[0].toUpperCase()+s.slice(1) : s;
+/* ---------- the horror host's script ----------
+   Every pool is a list of little templates. linePick() deals them like a shuffled deck and
+   remembers what it said lately (across app restarts), so a line won't come back until most
+   of its pool has had a turn. Agenda readings are assembled from several pools at once. */
+let recentLines=load("specter_recent_lines",{});
+function linePick(pool,arr){
+  const rec=(recentLines[pool]||[]).filter(i=>i<arr.length), keep=Math.max(0,Math.min(arr.length-1,Math.ceil(arr.length*.75)));
+  const open=arr.map((_,i)=>i).filter(i=>!rec.includes(i));
+  const i=open.length? open[Math.floor(Math.random()*open.length)] : 0;
+  recentLines[pool]=[i,...rec].slice(0,keep);
+  try{ localStorage.setItem("specter_recent_lines",JSON.stringify(recentLines)); }catch(e){}
+  return i;
+}
+const H=(pool,c={})=>{ const arr=HOST[pool]; return arr[linePick(pool,arr)](c); };
+const chance=p=>Math.random()<p;
+const HOST={
+  greet_morning:[
+    c=>"Good morning... if you can call it that.",
+    c=>"Up already? The early bird gets the worm. And the worm gets... well. Heh heh.",
+    c=>"Morning. The sun is up. How unfortunate.",
+    c=>"Ah, you're awake. I was beginning to wonder.",
+    c=>"Rise and shine, my dear. The coffin lid won't open itself."],
+  greet_afternoon:[
+    c=>"Good afternoon.",
+    c=>"Ah, the afternoon. The shadows are getting longer.",
+    c=>"Afternoon already? Time flies when you're decomposing.",
+    c=>"Halfway through the day, and still alive. Well done."],
+  greet_evening:[
+    c=>"Good evening...",
+    c=>"Evening falls. My favorite hour.",
+    c=>"The sun has set. Now we can talk.",
+    c=>"Ahh, dusk. When all the interesting things come out."],
+  greet_night:[
+    c=>"Still awake at this hour? So am I. I'm always awake.",
+    c=>"The witching hour. Splendid timing.",
+    c=>"Can't sleep? Neither can the dead.",
+    c=>"Burning the midnight oil? Careful... things that burn have a way of spreading."],
+
+  open:[
+    c=>`${c.On}, ${c.things} ${c.are} waiting for you. ${c.n===1?"It's":"They're"} very patient.`,
+    c=>`Ah, ${c.label}. I've been reading the ledger. ${cap(c.things)}... and ${c.n===1?"it knows":"they all know"} your name.`,
+    c=>`Heh heh heh... come closer. ${c.On}, fate has penciled in ${c.things}.`,
+    c=>`The candles are lit. ${c.On}, ${c.things} rise${c.s} from the grave.`,
+    c=>`Let me consult the book of the dead... ${c.on}, ${c.things}.`,
+    c=>`Gather round. ${c.On}, I see ${c.things} in the crystal ball.`,
+    c=>`Listen closely... ${c.on}, ${c.things} creep${c.s} onto the schedule.`,
+    c=>`I've been expecting you. ${c.On}... ${c.things}.`,
+    c=>`Pull up a coffin. ${c.On}, there ${c.are} ${c.things}.`,
+    c=>`The ravens have brought word. ${c.On}... ${c.things}.`,
+    c=>`What's this? ${c.On}, ${c.things}, scratching at the door.`,
+    c=>`Ahh, ${c.label}. A delightful day for it. ${cap(c.things)}, to be exact.`,
+    c=>`The ledger never lies. ${c.On}... ${c.things}.`,
+    c=>`Hold your candle steady. ${c.On}, ${c.things} await${c.s}.`,
+    c=>`I took the liberty of peeking. ${c.On}, ${c.things}. Heh heh.`,
+    c=>`From the depths of the calendar... ${c.things}, ${c.on}.`,
+    c=>`Step into my parlor. ${c.On}, ${c.things} ${c.are} laid out on the slab.`,
+    c=>`The bones have been cast. ${c.On}... ${c.things}.`],
+  empty:[
+    c=>`Nothing awaits you ${c.on}. An empty grave... how refreshing.`,
+    c=>`${c.On}? Not a soul. Even the ghosts took the day off.`,
+    c=>`The ledger is blank ${c.on}. Suspicious, isn't it? Heh heh heh.`,
+    c=>`${c.On}, the house is empty. Enjoy the silence... while it lasts.`,
+    c=>`${c.On}... nothing. Just the wind, and the creaking of old floorboards.`,
+    c=>`Not a single appointment ${c.on}. Whatever will you do with all that... free time?`,
+    c=>`I've searched every crypt. ${c.On}, there's nothing. Nothing at all.`,
+    c=>`${cap(c.label)} is as empty as a freshly dug grave. Waiting... to be filled.`,
+    c=>`Nothing ${c.on}. A rare day of rest. Use it wisely. You never know how many you have left.`,
+    c=>`Silence ${c.on}. Deathly silence. Heh heh.`,
+    c=>`Your schedule ${c.on}? Bare bones, my friend. Bare bones.`,
+    c=>`The calendar is empty ${c.on}. Even the bats are bored.`],
+  past_open:[
+    c=>`Ahh, ${c.label}. Dead and gone now... but I remember. ${cap(c.things)}.`,
+    c=>`Digging up the past, are we? ${c.On}, there ${c.were} ${c.things}.`,
+    c=>`${c.On}... that day is buried, but the bones remain. ${cap(c.things)}.`,
+    c=>`Let us exhume ${c.label}. ${cap(c.things)}.`,
+    c=>`A trip down memory lane. A dark and twisty lane. ${c.On}: ${c.things}.`,
+    c=>`${c.On}. It's over now. It can't hurt you anymore. Heh heh. There ${c.were} ${c.things}.`],
+  past_empty:[
+    c=>`${c.On}? Nothing happened. Nothing at all. Or so they'd have you believe.`,
+    c=>`${cap(c.label)} was empty. Peaceful. Like a closed casket.`,
+    c=>`Nothing ${c.on}. That day slipped quietly into the grave.`,
+    c=>`I've dug up ${c.label}, and found... nothing. Not even bones.`],
+
+  ev_first:[
+    c=>`At ${c.t}... ${c.title}.`,
+    c=>`First, at ${c.t}... ${c.title}.`,
+    c=>`The clock strikes ${c.t}, and with it... ${c.title}.`,
+    c=>`${c.t}. ${c.title}. Mark it well.`,
+    c=>`It begins at ${c.t}... with ${c.title}.`,
+    c=>`At the stroke of ${c.t}... ${c.title} comes calling.`],
+  ev_next:[
+    c=>`Then, at ${c.t}... ${c.title}.`,
+    c=>`At ${c.t}, ${c.title} awaits.`,
+    c=>`And when ${c.t} rolls around... ${c.title}.`,
+    c=>`${c.t}... ${c.title}. Don't be late. They hate it when you're late.`,
+    c=>`After that, at ${c.t}... ${c.title}.`,
+    c=>`At ${c.t}... ${c.title}. Heh heh.`,
+    c=>`Come ${c.t}... ${c.title}.`,
+    c=>`${c.title}, at ${c.t}. I'd bring a flashlight.`],
+  ev_last:[
+    c=>`And finally, at ${c.t}... ${c.title}.`,
+    c=>`Last of all, at ${c.t}... ${c.title}. If you make it that far.`,
+    c=>`And at ${c.t}, the grand finale... ${c.title}.`,
+    c=>`Then, to close the night, at ${c.t}... ${c.title}.`],
+  allday:[
+    c=>`All day long, ${c.title} lingers.`,
+    c=>`Hovering over the whole day... ${c.title}.`,
+    c=>`From dawn till dusk... ${c.title}.`,
+    c=>`${c.title}. All day. It never sleeps... and neither will you.`,
+    c=>`All day, ${c.title} haunts the hallways.`],
+  ev_past:[
+    c=>`At ${c.t}, there was ${c.title}.`,
+    c=>`${c.t}... ${c.title}. That's done now.`,
+    c=>`At ${c.t}... ${c.title}. Gone, but not forgotten.`,
+    c=>`${c.title}, at ${c.t}. Laid to rest.`],
+  allday_past:[
+    c=>`All day, there was ${c.title}.`,
+    c=>`${c.title}, haunting the whole day.`],
+
+  tasks:[
+    c=>`And clawing at the edge of your list: ${c.list}.`,
+    c=>`Still unburied on your list: ${c.list}.`,
+    c=>`And something stirs on your list... ${c.list}.`,
+    c=>`Your list whispers ${c.n===1?"a name":"a few names"}: ${c.list}.`,
+    c=>`Also lurking in the shadows: ${c.list}.`,
+    c=>`And don't forget the little ${c.n===1?"one":"ones"} on your list: ${c.list}. They bite.`,
+    c=>`Waiting in the cellar: ${c.list}.`,
+    c=>`Unfinished business: ${c.list}.`,
+    c=>`And scratching at the coffin lid: ${c.list}.`],
+  overdue:[
+    c=>`And from the past... things you thought you'd buried. ${c.list}. Still overdue. Still waiting.`,
+    c=>`Oh, and ${c.n===1?"a ghost":"a few ghosts"} you've been ignoring: ${c.list}. Overdue.`,
+    c=>`Overdue, and getting restless: ${c.list}.`,
+    c=>`Some things refuse to stay dead. Overdue: ${c.list}.`,
+    c=>`You left ${c.n===1?"this":"these"} out to rot: ${c.list}. Overdue... and ${c.n===1?"it remembers":"they remember"}.`],
+  busy:[
+    c=>"Busy, busy. You'll be dead on your feet. Heh heh.",
+    c=>"My, my. Such a full plate. Try not to choke.",
+    c=>"A packed day. They'll be carrying you out on a stretcher.",
+    c=>"Goodness. Even the undead take breaks, you know."],
+  light:[
+    c=>"Just the one. A light snack, really.",
+    c=>"Only one. Almost... disappointing.",
+    c=>"Just one little thing. How quaint."],
+  october:[
+    c=>"Ahh, October. My favorite time of year.",
+    c=>"The leaves are dying so beautifully this time of year.",
+    c=>"October... the veil grows thin."],
+  halloween:[c=>"And it's Halloween. My high holy day!", c=>"Halloween, at last. Mind the trick-or-treaters... some of them aren't wearing costumes."],
+  halloween_eve:[c=>"Halloween is almost here. I can hardly contain myself. Literally. Bits keep falling off."],
+  friday13:[c=>"Friday the thirteenth, no less. Watch your step.", c=>"Friday the thirteenth. Don't go into the woods. Or the basement. Or the lake."],
+  weekend:[c=>"A weekend, too. Even monsters need a day off.", c=>"The weekend. When the dead come out to play."],
+  monday:[c=>"A Monday. Truly, the most horrifying day of all.", c=>"Monday. I've seen terrible things, but Mondays..."],
+  close:[
+    c=>"Do try to survive it.",
+    c=>"Pleasant screams.",
+    c=>"Sleep tight... if you can.",
+    c=>"I'll be watching.",
+    c=>"Don't say I didn't warn you. Heh heh heh.",
+    c=>"Until then... rest in peace. Or at least, rest.",
+    c=>"Now go. And don't look back.",
+    c=>"Mind the stairs. They creak.",
+    c=>"I'd wish you luck... but where's the fun in that?",
+    c=>"Try not to lose your head.",
+    c=>"Be seeing you. Sooner than you think.",
+    c=>"Off you go. The night is young... and so, for now, are you.",
+    c=>"Keep a light on.",
+    c=>"Heh heh heh. It's going to be a scream.",
+    c=>"Tread carefully.",
+    c=>"Till we meet again. And we will.",
+    c=>"Don't let the bedbugs bite. Or anything else.",
+    c=>"And remember... I'm always right behind you."],
+  past_close:[
+    c=>"Some days are better left buried.",
+    c=>"Now, back into the ground it goes.",
+    c=>"What's done is done. Heh heh heh.",
+    c=>"Let the dead lie."],
+
+  rem_now:[
+    c=>`It's time... ${c.title}. Right now, at ${c.t}. They've been waiting a long time.`,
+    c=>`Heh heh heh... ${c.title}. ${c.t}. Now. Don't make them come looking for you.`,
+    c=>`The hour has come. ${c.title}. Go... go now.`,
+    c=>`Knock knock... ${c.title} is at the door. Right now. ${c.t}.`,
+    c=>`Now, my friend. ${c.title}. The clock has struck ${c.t}... and so must you.`,
+    c=>`${c.title}. It's ${c.t}. You're expected... and you know what happens to those who don't show.`,
+    c=>`Time's up. ${c.title}, ${c.t}. Run along now.`],
+  rem_soon:[
+    c=>`Pardon the intrusion... ${c.title} rises ${c.when}. At ${c.t}. It won't wait forever.`,
+    c=>`Psst... ${c.when}, ${c.title}. At ${c.t}. I'd start walking, if I were you. Walking... not running. Yet.`,
+    c=>`A warning from beyond... ${c.title}, ${c.when}. ${c.t}. Consider yourself haunted.`,
+    c=>`Tick, tock... ${c.title}, ${c.when}. At ${c.t}.`,
+    c=>`Don't look now, but ${c.title} is creeping closer. ${cap(c.when)}. At ${c.t}.`,
+    c=>`I hate to interrupt. No, actually, I love it. ${c.title}, ${c.when}. ${c.t}.`,
+    c=>`The bell tolls for thee... ${c.title}, ${c.when}. At ${c.t}.`,
+    c=>`A little bird told me. A dead one, mind you. ${c.title}, ${c.when}. ${c.t}.`,
+    c=>`Heh heh. Guess what's coming ${c.when}? ${c.title}. At ${c.t}.`,
+    c=>`Better start getting ready. ${c.title}, at ${c.t}. That's ${c.when}.`],
+
+  add_event:[
+    c=>`It is written... ${c.title}. ${c.whenStr}. There's no escaping it now.`,
+    c=>`Carved in stone. ${c.title}, ${c.whenStr}. Heh heh.`,
+    c=>`${c.title}... ${c.whenStr}. I've sealed it in the ledger. In blood, naturally.`,
+    c=>`Consider it done. ${c.title}, ${c.whenStr}. I never forget. Never.`,
+    c=>`Into the book of the dead it goes: ${c.title}, ${c.whenStr}.`,
+    c=>`${c.title}, ${c.whenStr}. Scheduled... and sealed. Like a tomb.`,
+    c=>`Noted. ${c.title}, ${c.whenStr}. I'll remind you, whether you like it or not.`,
+    c=>`Ahh, ${c.title}. ${c.whenStr}. Delightful. I'll be counting the hours.`,
+    c=>`${c.title}... ${c.whenStr}. Mark my words. Better yet, I've marked them for you.`,
+    c=>`Done and dusted. Like an old coffin. ${c.title}, ${c.whenStr}.`,
+    c=>`The ink is still wet... ${c.title}, ${c.whenStr}. Heh heh.`,
+    c=>`${c.title}? ${c.whenStr}. It's on the calendar now. No backing out.`],
+  add_again:[
+    c=>" And like all the best monsters... it keeps coming back.",
+    c=>" Again, and again, and again. Heh heh heh.",
+    c=>" It'll rise again, right on schedule.",
+    c=>" Over and over. Like a recurring nightmare.",
+    c=>" You'll never be rid of it. Never."],
+  add_todo:[
+    c=>`${c.title}... buried on your list.${c.due} It'll keep. Things like that always keep.`,
+    c=>`Another one for the list. ${c.title}.${c.due} The list is always hungry.`,
+    c=>`${c.title}. Into the crypt it goes.${c.due} Don't forget about it... it won't forget about you.`,
+    c=>`Added: ${c.title}.${c.due} Feed the list, and it grows.`,
+    c=>`${c.title}. I'll keep it on ice for you.${c.due}`,
+    c=>`Noted... ${c.title}.${c.due} It's down in the cellar with the others.`,
+    c=>`${c.title}? Consider it entombed on your list.${c.due}`,
+    c=>`One more soul for the list: ${c.title}.${c.due}`,
+    c=>`${c.title}. Scribbled in the margins of the book of the dead.${c.due}`,
+    c=>`Ahh, ${c.title}.${c.due} The list thanks you. It was getting... peckish.`],
+  complete:[
+    c=>`${c.title}... dead and buried. Heh heh. One less thing haunting you.`,
+    c=>`${c.title}? Finished. Put out of its misery.`,
+    c=>`${c.title}. It is done. Rest in peace... the task, I mean. Not you. Not yet.`,
+    c=>`Another one bites the dust. ${c.title}. Heh heh heh.`,
+    c=>`${c.title}... slain. Beautifully done.`,
+    c=>`${c.title}. Six feet under. Lovely work.`,
+    c=>`Ahh, ${c.title}. Finished at last. I'll miss it. No, I won't.`,
+    c=>`${c.title}? Gone. Like a scream in the night.`,
+    c=>`Checked off. ${c.title} has breathed its last.`,
+    c=>`${c.title}... done. The list grows weaker. Heh heh.`,
+    c=>`You've done it. ${c.title} is no more. I'm almost proud.`,
+    c=>`${c.title}. Struck down. Let it never rise again.`,
+    c=>`${c.title}... laid to rest. Now, what's next on the chopping block?`],
+  not_found:[
+    c=>`${c.q}? I've searched every crypt on your list. Nothing by that name.`,
+    c=>`${c.q}... never heard of it. And I've heard of everything.`,
+    c=>`Hmm. ${c.q}. No such soul on your list.`,
+    c=>`${c.q}? It's not here. Perhaps it was never alive to begin with.`,
+    c=>`I've dug and dug. No ${c.q}. Heh heh. Spooky.`],
+  del_task:[
+    c=>`${c.title}... vanished without a trace. As if it was never here at all.`,
+    c=>`${c.title}. Gone. Poof. Like a ghost at sunrise.`,
+    c=>`Erased. ${c.title} is no more.`,
+    c=>`${c.title}... into the furnace. Heh heh heh.`,
+    c=>`${c.title}? Disposed of. Quietly. No one will ever know.`],
+  del_event:[
+    c=>`${c.title}... erased from the ledger. Some things are better left forgotten.`,
+    c=>`${c.title}. Cancelled. Struck from the record.`,
+    c=>`${c.title}... gone. The calendar is a little emptier now. And a little hungrier.`,
+    c=>`I've buried ${c.title}. Don't go digging it back up.`,
+    c=>`${c.title}? Never happened. That's my story, and I'm sticking to it.`],
+  del_none:[
+    c=>`${c.q}? Nothing by that name lurks here.`,
+    c=>`I can't destroy what doesn't exist. No ${c.q} here.`,
+    c=>`${c.q}... no such thing. You're seeing ghosts.`],
+  unknown:[
+    c=>"Speak up, my friend. The dead are listening, but even they couldn't make that out. Try: add dentist Tuesday at 3 PM.",
+    c=>"I beg your pardon? My ears aren't what they used to be. They fell off years ago. Try: add dentist Tuesday at 3 PM.",
+    c=>"Mumbling, are we? Try again. Something like: dog food Friday. Or: read my tasks.",
+    c=>"Hmm... I didn't catch that. Try: what's on tomorrow.",
+    c=>"Was that a word, or a death rattle? Try: add dentist Tuesday at 3 PM."],
+  confirm:[
+    c=>`${c.kind}... ${c.main}. ${c.sub} Shall I make it so? Yes... or no?`,
+    c=>`${c.kind}: ${c.main}. ${c.sub} Do we have a deal? Yes or no?`,
+    c=>`${c.main}. ${c.sub} Say yes, and it's sealed. Say no, and it never happened.`,
+    c=>`${c.kind}... ${c.main}. ${c.sub} Well? Yes... or no?`,
+    c=>`Let me be sure I heard you. ${c.main}. ${c.sub} Yes or no?`,
+    c=>`${c.main}. ${c.sub} Your word is your bond. Yes, or no?`],
+  cancel:[
+    c=>"Cancelled. As if it never happened.",
+    c=>"Very well. Forgotten.",
+    c=>"Cancelled. Back into the shadows it goes.",
+    c=>"No? Suit yourself. Heh heh.",
+    c=>"Gone. Like it was never spoken."],
+  closing:[
+    c=>"Until next time... pleasant screams.",
+    c=>"I'll be here. I'm always here... waiting.",
+    c=>"Off you go. Mind the cobwebs.",
+    c=>"Farewell. For now.",
+    c=>"Leaving so soon? Heh heh. You'll be back.",
+    c=>"Rest easy. I'll keep watch."],
+  list_empty:[
+    c=>"Your list is empty. Suspiciously... empty.",
+    c=>"Nothing left on the list. Every last one, dead and buried. Heh heh.",
+    c=>"The list is bare. Not a single soul left to haunt you.",
+    c=>"Empty. You've slain them all. I'm impressed... and a little afraid of you.",
+    c=>"Your list? Clean as a picked bone."],
+  list_open:[
+    c=>`${c.n} unfinished thing${c.pl}, still breathing:`,
+    c=>`From the list, ${c.n} restless soul${c.pl}:`,
+    c=>`${c.n} thing${c.pl}, still clawing at you:`,
+    c=>`${c.n} task${c.pl}, refusing to die:`,
+    c=>`Let me read you the roll of the damned. ${c.n} in all:`,
+    c=>`Still lurking on your list... ${c.n} of them:`,
+    c=>`Your list, ${c.n} deep:`],
+  list_close:[
+    c=>"Best get digging.",
+    c=>"They won't finish themselves. Heh heh.",
+    c=>"Chop chop.",
+    c=>"Get to them. Before they get to you."],
+  test:[
+    c=>"Good evening... I am your host. Every appointment. Every errand. Every... obligation. I remember them all. Heh heh heh.",
+    c=>"Welcome, welcome... to the house of a thousand reminders. I'll be your guide.",
+    c=>"Can you hear me? Good. Then I can reach you... anywhere.",
+    c=>"Testing... testing... is anyone alive out there? Heh heh heh.",
+    c=>"Ahh, a fresh pair of ears. Make yourself comfortable. You'll be here a while."]
+};
+function timeOfDay(){ const h=new Date().getHours(); return h<5?"night":h<12?"morning":h<17?"afternoon":h<21?"evening":"night"; }
+function seasonalAside(dateStr){
+  const d=fromYMD(dateStr), md=dateStr.slice(5), dow=d.getDay();
+  if(md==="10-31") return H("halloween");
+  if(md==="10-30") return H("halloween_eve");
+  if(dow===5 && d.getDate()===13) return H("friday13");
+  if(!chance(.35)) return "";
+  const opts=[];
+  if(d.getMonth()===9) opts.push("october");
+  if(dow===0||dow===6) opts.push("weekend");
+  if(dow===1) opts.push("monday");
+  return opts.length? H(opts[Math.floor(Math.random()*opts.length)]) : "";
+}
+function hostAgenda(dateStr, evs, tds, overdue){
+  const t=todayStr(), past=dateStr<t, rel=niceDate(dateStr).toLowerCase();
+  const yest=new Date(); yest.setDate(yest.getDate()-1);
+  const label = rel==="today"||rel==="tomorrow"? rel : dateStr===ymd(yest)? "yesterday" : spokenDate(dateStr);
+  const on = /^(today|tomorrow|yesterday)$/.test(label)? label : "on "+label;
+  const n=evs.length+tds.length;
+  const c={label,on,On:cap(on),n,things:n===1?"one thing":n+" things",are:n===1?"is":"are",were:n===1?"was":"were",s:n===1?"s":""};
+  const parts=[];
+  if(!past && dateStr===t && chance(.45)) parts.push(H("greet_"+timeOfDay()));
+  if(!n){
+    parts.push(H(past?"past_empty":"empty",c));
+    if(!past && overdue.length) parts.push(H("overdue",{n:overdue.length,list:overdue.map(x=>x.title).join(". ")}));
+    if(!past){ const a=seasonalAside(dateStr); if(a) parts.push(a); }
+    return parts.join(" ");
+  }
+  parts.push(H(past?"past_open":"open",c));
+  if(!past && n>=5 && chance(.6)) parts.push(H("busy"));
+  if(!past && n===1 && chance(.4)) parts.push(H("light"));
+  const timed=evs.filter(e=>e.time);
+  evs.forEach(e=>{
+    if(!e.time){ parts.push(H(past?"allday_past":"allday",{title:e.title})); return; }
+    const i=timed.indexOf(e), x={title:e.title,t:spokenTime(e.time)};
+    parts.push(H(past?"ev_past": i===0?"ev_first" : (i===timed.length-1&&timed.length>2)?"ev_last":"ev_next", x));
+  });
+  if(tds.length) parts.push(H("tasks",{n:tds.length,list:tds.map(x=>x.title).join(". ")}));
+  if(!past && dateStr===t && overdue.length) parts.push(H("overdue",{n:overdue.length,list:overdue.map(x=>x.title).join(". ")}));
+  if(!past){ const a=seasonalAside(dateStr); if(a) parts.push(a); }
+  parts.push(H(past?"past_close":"close"));
+  return parts.join(" ");
+}
+
+/* ---------- improvise: let OpenAI write the line, but only keep it if every fact survived ---------- */
+const IMPROV_SYS=`You are the host of a gleeful old-school horror anthology: part velvet-voiced 1950s horror film star, part cackling crypt-dwelling narrator who loves a terrible pun. You announce the listener's schedule as a short spoken monologue that will be read aloud.
+Rules:
+- 2 to 6 short sentences, under 90 words.
+- Mention EVERY event and task you are given. Keep each title word for word. Write each time exactly as given (for example "3 PM"), in digits.
+- Never invent, drop, or change items, days, or times. If nothing is scheduled, say so.
+- For a past day, speak in the past tense.
+- Gothic puns, graveyard humor, theatrical menace, a wink. Use ellipses for dramatic pauses. "Heh heh heh" at most once.
+- Fit the time_of_day and any season or weekday that makes for a good joke.
+- No emojis, asterisks, stage directions, quotation marks, or dashes.
+- Do not begin the way any line in avoid_openings begins. Vary your vocabulary every time.`;
+let improvRecent=load("specter_improv_recent",[]);
+function keepsFacts(out,must){
+  const flat=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,"");
+  const o=flat(out);
+  return must.every(x=>!flat(x) || o.includes(flat(x)));
+}
+async function improvise(kind,facts,must,scripted){
+  if(!(settings.improvise && oaiKey() && isHost())) return scripted;
+  orb.classList.add("speaking");
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),7000);
+    const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",signal:ctl.signal,
+      headers:{"Authorization":"Bearer "+oaiKey(),"Content-Type":"application/json"},
+      body:JSON.stringify({model:"gpt-4o-mini",temperature:1.05,max_tokens:220,messages:[
+        {role:"system",content:IMPROV_SYS},
+        {role:"user",content:JSON.stringify(Object.assign({kind,time_of_day:timeOfDay(),avoid_openings:improvRecent},facts))}]})});
+    clearTimeout(to);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const j=await r.json();
+    const out=String((j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||"")
+      .replace(/[*_#"“”]/g,"").replace(/\s*[—–]\s*/g,"... ").trim();
+    if(!out || out.length>700 || !keepsFacts(out,must)) return scripted;   // dropped or mangled a fact: use the script
+    improvRecent=[out.split(/\s+/).slice(0,6).join(" "),...improvRecent].slice(0,8);
+    try{ localStorage.setItem("specter_improv_recent",JSON.stringify(improvRecent)); }catch(e){}
+    return out;
+  }catch(e){ return scripted; }
+}
+
 
 /* =============== reminder engine =============== */
 function occKey(ev,dateStr){ return ev.id+"|"+dateStr; }
@@ -942,14 +1346,8 @@ function fireReminder(ev){
   const sub = `${niceTime(ev.time)}${ev.notes? " · "+ev.notes:""}`;
   showBanner(ev.title, `${when==="now"?"Starting now":"Coming up "+when} · ${sub}`);
   const tm=spokenTime(ev.time);
-  announce(say(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${tm}.`, when==="now"? [
-      `It's time... ${ev.title}. Right now, at ${tm}. They're waiting for you. They've been waiting a long time.`,
-      `Heh heh heh... ${ev.title}. ${tm}. Now. Don't make them come looking for you.`
-    ] : [
-      `Pardon the intrusion... ${ev.title} rises ${when}. At ${tm}. It won't wait forever.`,
-      `Psst... ${when}, ${ev.title}. At ${tm}. I'd start walking, if I were you. Walking... not running. Yet.`,
-      `A warning from beyond... ${ev.title}, ${when}. ${tm}. Consider yourself haunted.`
-    ]));
+  announce(say(`Reminder. ${ev.title}, ${when==="now"?"starting now":when}, at ${tm}.`,
+    ()=>H(when==="now"?"rem_now":"rem_soon",{title:ev.title,t:tm,when})));
   if("Notification" in window && Notification.permission==="granted"){
     try{ new Notification("SPECTER · "+ev.title,{body:sub}); }catch(e){}
   }
@@ -1170,45 +1568,35 @@ function executeIntent(it){
     case "add-event":{
       events.push({id:uid(),title:it.title,date:it.date,time:it.time,dur:it.dur||null,rec:it.rec,rem:it.rem==null?"":String(it.rem),notes:""});
       save(LS.events,events); render();
-      { const when=`${niceDate(it.date)}${it.time? ", at "+spokenTime(it.time):""}`, again=it.rec? " And like all the best monsters... it keeps coming back.":"";
-      speak(say(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`, [
-        `It is written... ${it.title}. ${when}. There's no escaping it now.${again}`,
-        `Carved in stone. ${it.title}, ${when}. Heh heh.${again}`,
-        `${it.title}... ${when}. I've sealed it in the ledger. In blood, naturally.${again}`])); }
+      speak(say(`Added ${it.title}, ${niceDate(it.date)}${it.time? " at "+spokenTime(it.time):""}${it.rec? ", repeating":""}.`,
+        ()=>H("add_event",{title:it.title,whenStr:`${niceDate(it.date)}${it.time? ", at "+spokenTime(it.time):""}`})+(it.rec? H("add_again"):"")));
       return true;
     }
     case "add-todo":{
       todos.push({id:uid(),title:it.title,due:it.due,done:false});
       save(LS.todos,todos); render();
-      { const due=it.due? ` It comes due ${niceDate(it.due)}.`:"";
-      speak(say(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`, [
-        `${it.title}... buried on your list.${due} It'll keep. Things like that always keep.`,
-        `Another one for the list. ${it.title}.${due} The list is always hungry.`,
-        `${it.title}. Into the crypt it goes.${due} Don't forget about it... it won't forget about you.`])); }
+      speak(say(`Added ${it.title} to your list${it.due? ", due "+niceDate(it.due):""}.`,
+        ()=>H("add_todo",{title:it.title,due:it.due? ` It comes due ${niceDate(it.due)}.`:""})));
       return true;
     }
     case "complete-todo":{
       const t=findByTitle(todos.filter(x=>!x.done), it.query);
-      if(!t){ speak(say(`I couldn't find ${it.query} on your list.`,`${it.query}? I've searched every crypt on your list. Nothing by that name.`)); return false; }
+      if(!t){ speak(say(`I couldn't find ${it.query} on your list.`,()=>H("not_found",{q:it.query}))); return false; }
       t.done=true; save(LS.todos,todos); render();
-      speak(say(`${t.title}. Done. The list is satisfied, for now.`, [
-        `${t.title}... dead and buried. Heh heh. One less thing haunting you.`,
-        `${t.title}? Finished. Put out of its misery.`,
-        `${t.title}. It is done. Rest in peace... the task, I mean. Not you. Not yet.`]));
+      speak(say(`${t.title}. Done. The list is satisfied, for now.`,()=>H("complete",{title:t.title})));
       return true;
     }
     case "delete":{
       const t=findByTitle(todos,it.query);
-      if(t){ todos=todos.filter(x=>x.id!==t.id); save(LS.todos,todos); render(); speak(say(`Deleted task ${t.title}.`,`${t.title}... vanished without a trace. As if it was never here at all.`)); return true; }
+      if(t){ todos=todos.filter(x=>x.id!==t.id); save(LS.todos,todos); render(); speak(say(`Deleted task ${t.title}.`,()=>H("del_task",{title:t.title}))); return true; }
       const e=findByTitle(events,it.query);
-      if(e){ events=events.filter(x=>x.id!==e.id); save(LS.events,events); render(); speak(say(`Deleted event ${e.title}.`,`${e.title}... erased from the ledger. Some things are better left forgotten.`)); return true; }
-      speak(say(`Nothing named ${it.query} to delete.`,`${it.query}? Nothing by that name lurks here.`)); return false;
+      if(e){ events=events.filter(x=>x.id!==e.id); save(LS.events,events); render(); speak(say(`Deleted event ${e.title}.`,()=>H("del_event",{title:e.title}))); return true; }
+      speak(say(`Nothing named ${it.query} to delete.`,()=>H("del_none",{q:it.query}))); return false;
     }
     case "query-agenda": readAgenda(it.date); return true;
     case "query-todos": readTodos(); return true;
     default:
-      speak(say("I didn't catch a command in that. Try, add dentist Tuesday at 3 PM.",
-        "Speak up, my friend... the dead are listening, but even they couldn't make that out. Try: add dentist Tuesday at 3 PM."));
+      speak(say("I didn't catch a command in that. Try, add dentist Tuesday at 3 PM.",()=>H("unknown")));
       return false;
   }
 }
@@ -1222,28 +1610,20 @@ function readAgenda(dateStr){
     tds.forEach(t=>parts.push(`Task: ${t.title}.`));
     speak(parts.join(" "),true); return;
   }
-  const on = /^(today|tomorrow)$/.test(label)? label : "on "+label;
-  if(!evs.length && !tds.length){
-    speak(pickOne([`Nothing awaits you ${on}. An empty grave... how refreshing.`,
-      `${cap(on)}? Not a soul. Even the ghosts took the day off.`,
-      `The ledger is blank ${on}. Suspicious, isn't it? Heh heh heh.`,
-      `${cap(on)}, the house is empty. Nothing scheduled. Enjoy the silence... while it lasts.`]),true); return;
-  }
-  const n=evs.length+tds.length, things=n===1? "one thing" : n+" things";
-  const parts=[pickOne([`Good evening... ${cap(on)}, ${n===1?"one thing is":things+" are"} waiting for you. They're very patient.`,
-    `Ah, ${label}. I've been reading the ledger. ${cap(things)}... and ${n===1?"it knows":"they all know"} your name.`,
-    `Heh heh heh... come closer. ${cap(on)}, fate has penciled in ${things}.`,
-    `The candles are lit. ${cap(on)}, ${things} rise${n===1?"s":""} from the grave.`])];
-  evs.forEach(e=>parts.push(e.time? pickOne([`At ${spokenTime(e.time)}... ${e.title}.`,`At ${spokenTime(e.time)}... ${e.title}.`,`${spokenTime(e.time)}... ${e.title} awaits.`])
-                                   : pickOne([`All day long, ${e.title} lingers.`,`All day... ${e.title}, lurking.`])));
-  if(tds.length) parts.push(pickOne([`And clawing at the edge of your list: `,`Still unburied on your list: `,`And something stirs on your list: `])+tds.map(t=>t.title).join(". ")+".");
-  parts.push(pickOne(["Do try to survive it.","Pleasant screams.","Sleep tight... if you can.","I'll be watching.","Don't say I didn't warn you. Heh heh heh.","Until then... rest in peace. Or at least, rest."]));
-  speak(parts.join(" "),true);
+  const overdue = dateStr===todayStr()? todos.filter(x=>!x.done&&x.due&&x.due<dateStr) : [];
+  const scripted=hostAgenda(dateStr,evs,tds,overdue);
+  const facts={day:label, relation: dateStr<todayStr()?"past":label==="today"?"today":"upcoming", weekday:DOW[fromYMD(dateStr).getDay()],
+    events:evs.map(e=>({time:e.time? niceTime(e.time) : "all day", title:e.title})), tasks:tds.map(x=>x.title), overdue_tasks:overdue.map(x=>x.title)};
+  const must=[...evs.flatMap(e=>[e.title, e.time? niceTime(e.time):""]), ...tds.map(x=>x.title), ...overdue.map(x=>x.title)];
+  improvise("agenda",facts,must,scripted).then(t=>speak(t,true));
 }
 function readTodos(){
   const open=todos.filter(t=>!t.done);
-  if(!open.length){ speak(say("Your list is empty. Suspiciously empty.",["Your list is empty. Suspiciously... empty.","Nothing left on the list. Every last one, dead and buried. Heh heh."]),true); return; }
-  speak(say(`${open.length} open task${open.length!==1?"s":""}. `,[`${open.length} unfinished thing${open.length!==1?"s":""}, still breathing. `,`From the list, ${open.length} restless soul${open.length!==1?"s":""}. `])+open.map(t=>t.title).join(". ")+".",true);
+  if(!open.length){ speak(say("Your list is empty. Suspiciously empty.",()=>H("list_empty")),true); return; }
+  const items=open.map(t=>t.title).join(". ")+".";
+  if(!isHost()){ speak(`${open.length} open task${open.length!==1?"s":""}. `+items,true); return; }
+  const scripted=H("list_open",{n:open.length,pl:open.length!==1?"s":""})+" "+items+(chance(.5)? " "+H("list_close") : "");
+  improvise("task_list",{tasks:open.map(t=>t.title)},open.map(t=>t.title),scripted).then(t=>speak(t,true));
 }
 
 /* =============== ICS export (Outlook / Apple / Google) =============== */
@@ -2144,6 +2524,7 @@ function syncSettingsUI(){
   $("#versionNote").textContent="SPECTER version "+APP_VERSION;
   $("#selEngine").value=settings.engine||"device";
   $("#selOaiVoice").value=settings.oaiVoice||"onyx";
+  $("#tglImprov").classList.toggle("on",!!settings.improvise);
   $("#oaiBox").style.display= settings.engine==="openai"? "block" : "none";
   $("#deviceVoiceRow").style.display= settings.engine==="openai"? "none" : "";
   $("#oaiKey").placeholder= oaiKey()? "Key saved ✓ (paste to replace)" : "OpenAI API key (sk-…)";
@@ -2165,9 +2546,9 @@ $("#tglAnnounce").onclick=e=>{settings.announce=!settings.announce;save(LS.setti
 $("#tglConfirm").onclick=e=>{settings.confirm=!settings.confirm;save(LS.settings,settings);syncSettingsUI()};
 $("#rngRate").oninput=e=>{settings.rate=Number(e.target.value);save(LS.settings,settings)};
 $("#selDefRem").onchange=e=>{settings.defRem=e.target.value;save(LS.settings,settings)};
-$("#testVoice").onclick=()=>{unlockVoice();speak(say("Specter online. I hear you through the glasses.",
-  "Good evening... I am your host. Every appointment. Every errand. Every... obligation. I remember them all. Heh heh heh."),true)};
+$("#testVoice").onclick=()=>{unlockVoice();speak(say("Specter online. I hear you through the glasses.",()=>H("test")),true)};
 $("#selEngine").onchange=e=>{settings.engine=e.target.value;save(LS.settings,settings);syncSettingsUI()};
+$("#tglImprov").onclick=()=>{settings.improvise=!settings.improvise;save(LS.settings,settings);syncSettingsUI()};
 $("#selOaiVoice").onchange=e=>{settings.oaiVoice=e.target.value;save(LS.settings,settings)};
 $("#btnOaiSave").onclick=()=>{
   const v=$("#oaiKey").value.trim();
@@ -2367,7 +2748,7 @@ function handleUtterance(text){
   }
   vsMode="command";
   if(STOP_RX.test(text.trim())){
-    speak(say("Closing. I'll be here.",["Until next time... pleasant screams.","I'll be here. I'm always here... waiting."]),true);
+    speak(say("Closing. I'll be here.",()=>H("closing")),true);
     hideSheets(); return;
   }
   const it=parseCommand(text);
@@ -2389,7 +2770,7 @@ function handleUtterance(text){
   if(settings.handsFree || settings.confirm){
     afterTTS = settings.handsFree ? ()=>{ if(vsMode==="confirm") startListening(); } : null;
     const sub=d.sub? d.sub.replace(/·/g,",").replace(/⏱/g,"reminder")+"." : "";
-    speak(say(`${d.kind}: ${d.main}. ${sub} Yes or no?`,`${d.kind}... ${d.main}. ${sub} Shall I make it so? Yes... or no?`),true);
+    speak(say(`${d.kind}: ${d.main}. ${sub} Yes or no?`,()=>H("confirm",{kind:d.kind,main:d.main,sub})),true);
   }
 }
 function confirmPending(){
@@ -2409,7 +2790,7 @@ function cancelPending(silent){
   $("#vsResult").style.display="none";$("#vsActions").style.display="none";
   if(silent) return;
   $("#vsTranscript").innerHTML='<span class="hint">Cancelled. Say another command, or “that’s all.”</span>';
-  if(settings.handsFree){ setVSState("cancelled — listening"); afterTTS=rearm; speak(say("Cancelled.","Cancelled. As if it never happened."),true); }
+  if(settings.handsFree){ setVSState("cancelled — listening"); afterTTS=rearm; speak(say("Cancelled.",()=>H("cancel")),true); }
   else setVSState("cancelled");
 }
 $("#vsConfirm").onclick=()=>confirmPending();
