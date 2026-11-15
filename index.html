@@ -608,10 +608,17 @@ nav{
     <button class="btn btn-ghost" id="testVoice" style="width:auto;margin:0;padding:10px 14px">Test</button>
   </div>
   <div class="set-row">
-    <div><div class="s-label">Default reminder</div><div class="s-sub">For voice-added timed events</div></div>
+    <div><div class="s-label">Default reminder</div><div class="s-sub">For new timed events, typed or spoken</div></div>
     <select id="selDefRem" style="background:var(--surface2);border:1px solid var(--line);color:var(--bone);border-radius:10px;padding:9px 10px;font-family:'Karla'">
       <option value="">None</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hr</option>
     </select>
+  </div>
+  <div class="set-row">
+    <div style="margin-right:12px"><div class="s-label">Morning briefing</div><div class="s-sub">A daily notification listing that day's events and tasks. Your phone's calendar delivers it, even when SPECTER is closed: needs Outlook (direct) or the calendar feed below.</div></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+      <div class="toggle" id="tglDigest"></div>
+      <input type="time" id="digestTime" style="background:var(--surface2);border:1px solid var(--line);color:var(--bone);border-radius:10px;padding:7px 8px;font-family:var(--mono);font-size:13px">
+    </div>
   </div>
   <div class="set-row" style="display:block">
     <div class="s-label">Cloud sync (morning brief + Outlook feed)</div>
@@ -701,8 +708,8 @@ const load = (k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){
 const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.events||k===LS.todos){ try{scheduleSync()}catch(e){} try{olSchedule()}catch(e){} } };
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
-let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx",improvise:false},load(LS.settings,{}));
-const APP_VERSION="2026.10.15";
+let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx",improvise:false,digest:true,digestTime:"07:30"},load(LS.settings,{}));
+const APP_VERSION="2026.11.15";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -1626,6 +1633,28 @@ function readTodos(){
   improvise("task_list",{tasks:open.map(t=>t.title)},open.map(t=>t.title),scripted).then(t=>speak(t,true));
 }
 
+/* =============== morning briefing =============== */
+// One short "briefing" item per day for the next 3 weeks, at the chosen time, with an alert.
+// It rides along in the Outlook sync and the .ics feed, so the phone's own calendar pushes it
+// even while SPECTER is closed. Days with nothing on them get no briefing.
+const DIGEST_DAYS=21;
+function digestItems(){
+  if(settings.digest===false) return [];
+  const out=[], t=todayStr(), tm=/^\d\d:\d\d$/.test(settings.digestTime||"")? settings.digestTime : "07:30";
+  for(let i=0;i<DIGEST_DAYS;i++){
+    const d=new Date(); d.setDate(d.getDate()+i); const ds=ymd(d);
+    const evs=eventsOn(ds), tds=todosOn(ds), over= ds===t? todos.filter(x=>!x.done&&x.due&&x.due<t) : [];
+    if(!evs.length&&!tds.length&&!over.length) continue;
+    const bits=[...evs.map(e=>(e.time? niceTime(e.time)+" ":"")+e.title), ...tds.map(x=>"☐ "+x.title), ...over.map(x=>"⚠ "+x.title+" (overdue)")];
+    let title="☠ Today: "+bits.join(" · ");
+    if(title.length>180) title=title.slice(0,177)+"…";
+    const lines=[...evs.map(e=>(e.time? niceTime(e.time)+(e.dur?"–"+niceTime(addMinutes(e.time,e.dur)):"") : "All day")+"  "+e.title),
+      ...tds.map(x=>"☐ "+x.title), ...over.map(x=>"⚠ overdue: "+x.title)];
+    out.push({ds,tm,title,desc:"SPECTER morning briefing\n\n"+lines.join("\n")});
+  }
+  return out;
+}
+
 /* =============== ICS export (Outlook / Apple / Google) =============== */
 const ICS_PATH="specter.ics";
 function icsEsc(s){ return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n"); }
@@ -1706,6 +1735,13 @@ function buildICS(stampDate){
       L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(ev.title),"TRIGGER:-PT"+Number(ev.rem)+"M","END:VALARM");
     }
     L.push("END:VEVENT");
+  });
+  digestItems().forEach(g=>{
+    const [Y,Mo,D]=g.ds.split("-").map(Number), [h,mi]=g.tm.split(":").map(Number);
+    L.push("BEGIN:VEVENT","UID:digest-"+g.ds+"@specter","DTSTAMP:"+stamp,"SUMMARY:"+icsEsc(g.title),
+      "DTSTART"+dt(new Date(Y,Mo-1,D,h,mi)),"DTEND"+dt(new Date(Y,Mo-1,D,h,mi+5)),"TRANSP:TRANSPARENT",
+      "DESCRIPTION:"+icsEsc(g.desc),"CATEGORIES:SPECTER briefing",
+      "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(g.title),"TRIGGER:PT0M","END:VALARM","END:VEVENT");
   });
   if(settings.icsTasks!==false){
     todos.filter(t=>!t.done&&t.due).forEach(t=>{
@@ -1843,7 +1879,7 @@ async function syncPush(opts){
       settings.icsSig=sig; settings.icsPushed=true;
     }
     await ensurePages();
-    const now=new Date(); settings.lastSync=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const now=new Date(); settings.lastSync=`${pad(now.getHours())}:${pad(now.getMinutes())}`; settings.lastSyncDay=todayStr();
     save(LS.settings,settings);
     setSyncStatus("synced "+settings.lastSync+" ✓"); refreshSyncUI();
   }catch(e){
@@ -2014,6 +2050,12 @@ function olDesired(){
   });
   if(settings.olTasks!==false) todos.filter(t=>t&&!t.done&&t.due&&t.title).forEach(t=>{
     out["task:"+t.id]={body:olTaskBody(t),excl:[],title:"☐ "+t.title,date:t.due,time:""};
+  });
+  digestItems().forEach(g=>{
+    const [Y,Mo,D]=g.ds.split("-").map(Number), [h,mi]=g.tm.split(":").map(Number), tz=olTz();
+    out["digest:"+g.ds]={excl:[],title:g.title,date:g.ds,time:g.tm,body:{subject:g.title,body:{contentType:"text",content:g.desc},
+      isAllDay:false,showAs:"free",isReminderOn:true,reminderMinutesBeforeStart:0,
+      start:{dateTime:localISO(new Date(Y,Mo-1,D,h,mi)),timeZone:tz},end:{dateTime:localISO(new Date(Y,Mo-1,D,h,mi+5)),timeZone:tz}}};
   });
   Object.values(out).forEach(d=>{
     const b=d.body;
@@ -2457,7 +2499,7 @@ function openEventSheet(ev,dateStr,occDate){
   $("#evTime").value=ev?(ev.time||""):"";
   $("#evEnd").value=ev&&ev.time&&ev.dur?addMinutes(ev.time,ev.dur):"";
   $("#evFreq").value=ev&&ev.rec?ev.rec.freq:"";
-  $("#evRem").value=ev?(ev.rem??""):"";
+  $("#evRem").value=ev?(ev.rem??""):(settings.defRem||"");
   $("#evUntil").value=ev&&ev.rec&&ev.rec.until?ev.rec.until:"";
   $("#evNotes").value=ev?(ev.notes||""):"";
   evColor=ev&&ev.color||""; buildSwatches($("#evSwatches"),evColor,c=>{evColor=c;});
@@ -2534,8 +2576,12 @@ function syncSettingsUI(){
   $("#selTheme").value=settings.theme||"classic";
   $("#selKill").value=settings.kill||"random";
   $("#tglSlash").classList.toggle("on",settings.slashPast!==false);
+  $("#tglDigest").classList.toggle("on",settings.digest!==false);
+  $("#digestTime").value=settings.digestTime||"07:30";
 }
 $("#selTheme").onchange=e=>{settings.theme=e.target.value;save(LS.settings,settings);render()};
+$("#tglDigest").onclick=()=>{settings.digest=settings.digest===false;save(LS.settings,settings);syncSettingsUI();scheduleSync();olSchedule()};
+$("#digestTime").onchange=e=>{ if(!e.target.value) return; settings.digestTime=e.target.value;save(LS.settings,settings);scheduleSync();olSchedule()};
 $("#tglSlash").onclick=()=>{settings.slashPast=settings.slashPast===false;save(LS.settings,settings);syncSettingsUI();renderCal()};
 $("#selKill").onchange=e=>{settings.kill=e.target.value;save(LS.settings,settings);render()};
 $("#settingsBtn").onclick=()=>{unlockVoice();syncSettingsUI();refreshSyncUI();refreshOlUI(olRunning);show("settingsSheet");
@@ -2623,6 +2669,7 @@ function importICS(text){
   blocks.forEach(b=>{
     const get=name=>{const l=b.find(x=>x.toUpperCase().startsWith(name+":")||x.toUpperCase().startsWith(name+";"));return l||null};
     if(get("RECURRENCE-ID")){skipped++;return;} // modified instance of a series — base series covers it
+    const uidL=get("UID"); if(uidL && /:digest-\d{4}-\d\d-\d\d@specter/i.test(uidL)){skipped++;return;} // SPECTER's own morning briefings
     const status=get("STATUS"); if(status&&/CANCELLED/i.test(status)){skipped++;return;}
     const sumL=get("SUMMARY"); if(!sumL){skipped++;return;}
     const title=icsUnescape(sumL.slice(sumL.indexOf(":")+1)).trim().slice(0,140);
@@ -2864,7 +2911,9 @@ async function checkForUpdate(){
 /* midnight rollover + resume */
 let lastDay=todayStr();
 setInterval(()=>{ if(todayStr()!==lastDay){lastDay=todayStr();render();} },30000);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();olSchedule();checkForUpdate();} });
+// the briefing window rolls forward daily, so refresh the feed the first time SPECTER opens each day
+const dailyFeedRefresh=()=>{ if(settings.ghToken && settings.lastSyncDay!==todayStr()) scheduleSync(); };
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){checkReminders();render();olSchedule();checkForUpdate();dailyFeedRefresh();} });
 
 render();
 checkReminders();
@@ -2872,7 +2921,7 @@ refreshOlUI();
 olHandleRedirect().then(back=>{
   // returning from Microsoft sign-in: reopen Settings so the result is visible
   if(back){ syncSettingsUI(); refreshSyncUI(); refreshOlUI(true); show("settingsSheet"); }
-  else{ olSchedule(); checkForUpdate(); }
+  else{ olSchedule(); checkForUpdate(); dailyFeedRefresh(); }
 });
 </script>
 </body>
