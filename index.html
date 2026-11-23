@@ -145,6 +145,28 @@ main{flex:1;overflow-y:auto;padding:4px 20px 130px;-webkit-overflow-scrolling:to
   background:var(--surface2);border:1px solid var(--line);color:var(--ecto);
   border-radius:12px;width:48px;font-size:20px;cursor:pointer;
 }
+/* ---------- chores ---------- */
+.ch-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
+.ch-nav button{background:var(--surface);border:1px solid var(--line);color:var(--bone);width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer}
+.ch-day{text-align:center;flex:1}
+.ch-day b{font-family:'Spectral',serif;font-weight:600;font-size:19px;display:block}
+.ch-day span{font-size:12px;color:var(--bone-dim)}
+.ch-today{background:none;border:none;color:var(--ecto);font-size:12px;cursor:pointer;font-family:'Karla',sans-serif;text-decoration:underline;padding:0;margin-top:2px}
+.ch-where{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 13px;font-size:13px;margin-bottom:10px}
+.ch-where b{color:var(--bone)} .ch-where span{color:var(--bone-dim)}
+.ch-alert{border:1px solid var(--violet);background:rgba(110,90,140,.16);border-radius:12px;padding:10px 13px;font-size:13px;margin-bottom:10px;line-height:1.45}
+.ch-alert b{color:var(--ecto)}
+.ch-bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:4px 0 2px}
+.ch-bar i{display:block;height:100%;background:var(--ecto);transition:width .3s}
+.ch-count{font-family:var(--mono);font-size:11px;color:var(--bone-dim);margin-bottom:6px}
+.ch-head{display:flex;justify-content:space-between;align-items:baseline}
+.todo-time{font-family:var(--mono);font-size:11px;color:var(--ecto);margin-right:6px}
+.ch-note{font-size:12px;color:var(--bone-dim);margin-top:3px;line-height:1.4}
+.ch-swap{background:none;border:1px solid var(--line);border-radius:8px;color:var(--bone-dim);font-size:11px;cursor:pointer;padding:3px 7px;flex-shrink:0;font-family:'Karla',sans-serif}
+.ch-swapped{font-size:11px;color:var(--ember);margin-top:3px}
+.ch-rest{text-align:center;padding:28px 10px;color:var(--bone-dim)}
+.today-chores{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;background:var(--surface);border:1px dashed var(--violet);border-radius:12px;cursor:pointer;color:var(--bone);width:100%;font-family:'Karla',sans-serif;font-size:14px;text-align:left}
+.today-chores .ch-bar{flex:1;margin:0}
 /* ---------- tab bar + orb ---------- */
 nav{
   position:absolute;bottom:0;left:0;right:0;
@@ -156,8 +178,9 @@ nav{
   background:none;border:none;color:var(--bone-dim);cursor:pointer;
   display:flex;flex-direction:column;align-items:center;gap:3px;
   font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-family:'Karla',sans-serif;
-  padding:6px 12px;width:74px;
+  padding:6px 2px;width:74px;flex:0 1 74px;min-width:0;white-space:nowrap;
 }
+@media (max-width:430px){ .tab{font-size:9px;letter-spacing:.03em} }
 .tab .glyph{font-size:19px;line-height:1}
 .tab.active{color:var(--ecto)}
 /* the séance orb */
@@ -438,6 +461,18 @@ nav{
       </div>
       <div id="todoList"></div>
     </section>
+
+    <!-- CHORES -->
+    <section class="view" id="view-chores">
+      <h1 class="view-title">Chores</h1>
+      <div class="view-sub">She studies. We've got the house.</div>
+      <div class="ch-nav">
+        <button id="chPrev" aria-label="Previous weekday">‹</button>
+        <div class="ch-day"><b id="chDayLabel"></b><span id="chDaySub"></span><br><button class="ch-today" id="chToday" hidden>Back to today</button></div>
+        <button id="chNext" aria-label="Next weekday">›</button>
+      </div>
+      <div id="choreList"></div>
+    </section>
   </main>
 
   <nav>
@@ -445,6 +480,7 @@ nav{
     <button class="tab" data-view="cal"><span class="glyph">▦</span>Calendar</button>
     <div id="orbWrap"><div id="orb" role="button" aria-label="Voice command"><div class="core"></div></div></div>
     <button class="tab" data-view="tasks"><span class="glyph">☰</span>Tasks</button>
+    <button class="tab" data-view="chores"><span class="glyph">✓</span>Chores</button>
     <button class="tab" id="tabSpeak"><span class="glyph">◍</span>Read day</button>
   </nav>
 </div>
@@ -725,7 +761,7 @@ const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.event
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
 let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx",improvise:false,digest:true,digestTime:"07:30"},load(LS.settings,{}));
-const APP_VERSION="2026.11.23";
+const APP_VERSION="2026.11.23.2";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -793,6 +829,129 @@ function eventsOn(dateStr){
     .sort((a,b)=>(a.time||"00:00").localeCompare(b.time||"00:00") || a.title.localeCompare(b.title));
 }
 function todosOn(dateStr){ return todos.filter(t=>t.due===dateStr && !t.done); }
+
+/* =============== chores (bar prep plan) =============== */
+// Weekday plan for Dad + daughter while Mom studies for the Feb 2027 bar. Days: 1=Mon … 5=Fri.
+// Checks live on this phone only (specter_chores), keyed by date, so every day starts fresh.
+const CHORE_LS="specter_chores";
+const CHORE_START="2026-11-23", CHORE_END="2027-02-26";
+const CH_OFFICE_FRI=["2026-12-11","2027-01-08","2027-01-22","2027-02-05","2027-02-19"];
+const CH_WHO={dad:"Dad",kid:"Daughter"};
+const CH_WHERE={1:["Home, studying","Quiet 9:30 to 5. Dad's office day."],2:["At the Forum all day","Out about 9 to 5."],
+  3:["At the library all day","House is empty: go loud."],4:["At the library all day","House is empty: go loud."],
+  5:["Home, studying","Quiet 9:30 to 5:30. Check-in at 5."]};
+// id, who, days, time, title, note, skip dates, last date (optional)
+const CHORES=[
+  ["mreset","dad",[1],"07:00","Morning reset + slow cooker","Unload dishwasher. Start slow cooker or thaw leftovers. Coffee made before you leave."],
+  ["reset","dad",[2,3,4,5],"07:30","Morning reset","Unload dishwasher. Coffee + breakfast out for her.",["2026-12-25","2027-02-23","2027-02-24"]],
+  ["wash1","dad",[2],"07:30","Start laundry (hers + shared)",""],
+  ["sheets","dad",[5],"07:30","Strip beds, start sheets + towels","",["2026-12-25"]],
+  ["dry1","dad",[2],"12:00","Laundry to dryer + 10-min pickup","Lunch break."],
+  ["vac","dad",[3],"12:00","Vacuum every floor","She's out. Go loud."],
+  ["groc","dad",[3],"12:30","Grocery order for Thu 5 PM pickup",""],
+  ["deep","dad",[4],"12:00","Kitchen deep wipe + fridge cleanout","Toss old leftovers before trash night.",["2026-11-26"]],
+  ["dry5","dad",[5],"12:00","Sheets to dryer (quietly)","She's studying at home.",CH_OFFICE_FRI.concat(["2026-12-25"])],
+  ["dry5o","dad",[],"17:00","Sheets to dryer","In-office Friday: do it when you get home.",[],null,CH_OFFICE_FRI],
+  ["fold2","dad",[2],"17:00","Fold + put away laundry","Before she gets home."],
+  ["pick","dad",[4],"17:00","Grocery pickup + put away","",["2026-11-26"]],
+  ["fold5","dad",[5],"17:00","Fold sheets + make beds","Her check-in is at 5. Keep it quiet.",["2026-12-25"]],
+  ["cook","dad",[2,3,4],"17:30","Cook dinner","On the table by 6:15.",["2026-11-26","2026-12-24","2026-12-31"]],
+  ["mdin","dad",[1],"18:00","Dinner: slow cooker / leftovers",""],
+  ["fdin","dad",[5],"17:45","Easy Friday dinner","Takeout or simple. Her week is done.",["2026-12-25","2027-01-29"]],
+  ["huddle","dad",[1],"20:30","Week huddle with daughter","Get her schedule. Swap what she can't cover."],
+  ["bag","dad",[1,2,3],"21:00","Pack her bag for tomorrow","Lunch, snacks, water, headphones, charger.",["2026-11-25","2026-12-23","2026-12-30","2027-01-06"],"2027-02-17"],
+  ["kclose","kid",[1,2,3,4,5],null,"Kitchen close after dinner","Load + run dishwasher, wipe counters, sweep.",["2026-12-25"]],
+  ["trashin","kid",[1],null,"Empty every small trash can into the big bin",""],
+  ["quiet1","kid",[1],null,"Quiet house 9:30 to 5 while Mom studies",""],
+  ["table","kid",[2],null,"Set the table before dinner",""],
+  ["wipe","kid",[2],null,"Wipe dining table + coffee table",""],
+  ["klaund","kid",[3],null,"Your own laundry, start to finish",""],
+  ["kcook","kid",[3],null,"Help cook dinner (if you're home)",""],
+  ["bath","kid",[4],null,"Bathrooms: toilet, sink, mirror, fresh towels","",["2027-01-07"]],
+  ["curb","kid",[4],null,"Trash + recycling to the curb","",["2027-01-07"]],
+  ["reset5","kid",[5],null,"Reset shared spaces for the weekend","Shoes, bags, blankets.",["2026-12-25"]],
+  ["quiet5","kid",[5],null,"Quiet house till 5:30",""],
+].map(([id,who,days,time,title,note,skip,until,only])=>({id,who,days,time,title,note,skip:skip||[],until:until||null,only:only||null}));
+// one-day additions + banners
+const CHORE_DAYS={
+  "2026-11-26":{alert:"Thanksgiving half day. She studies till 12:30. Nobody asks her to cook."},
+  "2026-12-14":{alert:"Exam refund deadline. Just ask how she's feeling about February."},
+  "2026-12-24":{alert:"Half day at home. Quiet till 12:30."},
+  "2026-12-25":{alert:"Christmas. Chart's off."},
+  "2026-12-31":{alert:"Half day at home. Quiet till 12:30."},
+  "2027-01-01":{alert:"Half day at home. Quiet till 12:30."},
+  "2027-01-05":{alert:"<b>Practice exam day</b> (200-question MBE sim). Her pick for dinner. No house questions tonight."},
+  "2027-01-07":{alert:"Mom + daughter day. Dad covers the daughter's Thursday chores.",add:[["dad",null,"Bathrooms (covering)",""],["dad",null,"Trash + recycling to the curb (covering)",""]]},
+  "2027-01-29":{alert:"ExamSoft mock at 5:30. Silent house from 5:30.",add:[["dad","19:00","Dinner after her mock exam",""]]},
+  "2027-02-03":{alert:"<b>Practice exam day</b> (full-day written sim). Her pick for dinner."},
+  "2027-02-10":{alert:"<b>Practice exam day</b> (half-day written sim). Her pick for dinner."},
+  "2027-02-16":{alert:"<b>Final MBE practice exam.</b> Her pick for dinner."},
+  "2027-02-19":{alert:"ExamSoft mock deadline today. One gentle ask: done?"},
+  "2027-02-22":{alert:"Last review day. Then rest.",add:[["dad","20:00","Pack her exam bag with her","Admittance ticket, photo ID, laptop + charger, lunch, snacks, water, layers. Gas in the car."]]},
+  "2027-02-23":{alert:"<b>BAR EXAM day 1.</b> Dad + daughter do everything.",add:[["dad","06:30","Breakfast + coffee ready",""]]},
+  "2027-02-24":{alert:"<b>BAR EXAM day 2.</b> Last one. Plan something for when she walks out.",add:[["dad","06:30","Breakfast + coffee ready",""]]},
+  "2027-02-25":{alert:"She's done. Talk about how chores split from here."},
+};
+let choreState=Object.assign({checks:{},swaps:{}},load(CHORE_LS,{}));
+const saveChores=()=>{ try{ localStorage.setItem(CHORE_LS,JSON.stringify(choreState)); }catch(e){} };
+function choresOn(ds){
+  if(ds<CHORE_START||ds>CHORE_END) return [];
+  const dow=fromYMD(ds).getDay(); if(dow===0||dow===6) return [];
+  const list=CHORES.filter(c=> c.only? c.only.includes(ds)
+    : c.days.includes(dow) && !c.skip.includes(ds) && !(c.until&&ds>c.until));
+  const extra=((CHORE_DAYS[ds]||{}).add||[]).map(([who,time,title,note],i)=>({id:"x"+i,who,time,title,note}));
+  const sw=choreState.swaps[ds]||{};
+  return list.concat(extra).map(c=>Object.assign({},c,{who:sw[c.id]||c.who,swapped:!!sw[c.id]}))
+    .sort((a,b)=>(a.time||"99").localeCompare(b.time||"99"));
+}
+function choreProgress(ds){
+  const l=choresOn(ds), ck=choreState.checks[ds]||{};
+  return {done:l.filter(c=>ck[c.id]).length,total:l.length};
+}
+let choreDay=null;
+function choreDefaultDay(){ // today, or the next weekday on a weekend
+  const d=fromYMD(todayStr()); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); return ymd(d);
+}
+function stepWeekday(ds,dir){ const d=fromYMD(ds); do{ d.setDate(d.getDate()+dir); }while(d.getDay()===0||d.getDay()===6); return ymd(d); }
+function renderChores(){
+  if(!choreDay) choreDay=choreDefaultDay();
+  const ds=choreDay, d=fromYMD(ds), dow=d.getDay();
+  $("#chDayLabel").textContent=niceDate(ds)==="Today"? `Today, ${DOW[dow]}` : `${DOW[dow]}`;
+  $("#chDaySub").textContent=`${MON[d.getMonth()]} ${d.getDate()}`;
+  $("#chToday").hidden= ds===choreDefaultDay();
+  const list=choresOn(ds), ck=choreState.checks[ds]||{}, info=CHORE_DAYS[ds]||{};
+  let html="";
+  if(CH_WHERE[dow] && ds>=CHORE_START && ds<=CHORE_END){
+    let w=CH_WHERE[dow];
+    if(dow===5 && CH_OFFICE_FRI.includes(ds)) w=[w[0],w[1]+" Dad's in-office Friday."];
+    html+=`<div class="ch-where"><span>Mom: </span><b>${w[0]}</b><br><span>${w[1]}</span></div>`;
+  }
+  if(info.alert) html+=`<div class="ch-alert">${info.alert}</div>`;
+  if(!list.length){
+    html+=`<div class="ch-rest">${ds>CHORE_END?"The chore chart is retired. She passed the hard part.":"No chores on the chart today."}</div>`;
+    $("#choreList").innerHTML=html; return;
+  }
+  ["dad","kid"].forEach(who=>{
+    const items=list.filter(c=>c.who===who); if(!items.length) return;
+    const n=items.filter(c=>ck[c.id]).length;
+    html+=`<div class="ch-head"><div class="section-label">${CH_WHO[who]}</div><div class="ch-count">${n} of ${items.length}</div></div>
+      <div class="ch-bar"><i style="width:${Math.round(100*n/items.length)}%"></i></div>`;
+    html+=items.map(c=>{
+      const done=!!ck[c.id];
+      return `<div class="todo-item ${done?"done":""}">
+        <button class="todo-check" data-chore="${c.id}" aria-label="Mark done">${done?"✓":""}</button>
+        <div class="todo-body"><div class="todo-title">${c.time?`<span class="todo-time">${niceTime(c.time)}</span>`:""}${esc(c.title)}</div>
+        ${c.note?`<div class="ch-note">${esc(c.note)}</div>`:""}
+        ${c.swapped?`<div class="ch-swapped">swapped today</div>`:""}</div>
+        <button class="ch-swap" data-chswap="${c.id}" aria-label="Give to ${who==="dad"?"daughter":"Dad"}">⇄ ${who==="dad"?"Kid":"Dad"}</button></div>`;
+    }).join("");
+  });
+  $("#choreList").innerHTML=html;
+}
+function choreTodayHTML(){
+  const ds=todayStr(), p=choreProgress(ds); if(!p.total) return "";
+  return `<button class="today-chores" data-goto="chores"><span>✓ Chores</span><span class="ch-bar"><i style="width:${Math.round(100*p.done/p.total)}%"></i></span><span class="todo-due" style="margin:0">${p.done} of ${p.total}</span></button>`;
+}
 
 /* =============== speech (TTS) =============== */
 let voiceUnlocked=false;
@@ -2655,7 +2814,7 @@ function renderToday(){
       html+=overdue.map(x=>todoRowHTML(x,true)).join("")+tds.map(x=>todoRowHTML(x)).join("");
     }
   }
-  $("#todayList").innerHTML=html;
+  $("#todayList").innerHTML=choreTodayHTML()+html;
 }
 function todoRowHTML(x,over){
   const kill=x.done? killHTML(x) : "";
@@ -2700,7 +2859,7 @@ function renderCal(){
   if(!ph) ph=`<div class="empty-state" style="padding:18px"><p>Nothing here.</p></div>`;
   $("#dayPanelList").innerHTML=ph;
 }
-function render(){ applyTheme(); renderHeader(); renderToday(); renderTodos(); renderCal(); }
+function render(){ applyTheme(); renderHeader(); renderToday(); renderTodos(); renderCal(); renderChores(); }
 
 /* =============== sheets =============== */
 const backdrop=$("#backdrop");
@@ -2859,7 +3018,7 @@ $("#selVoice").onchange=e=>{settings.voiceName=e.target.value;save(LS.settings,s
 $("#rngPitch").oninput=e=>{settings.pitch=Number(e.target.value);save(LS.settings,settings)};
 $("#tglReadTap").onclick=()=>{settings.readTap=settings.readTap===false;save(LS.settings,settings);syncSettingsUI()};
 $("#btnExport").onclick=()=>{
-  const blob=new Blob([JSON.stringify({events,todos,settings,days},null,2)],{type:"application/json"});
+  const blob=new Blob([JSON.stringify({events,todos,settings,days,chores:choreState},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="specter-backup.json";a.click();
 };
 $("#btnImport").onclick=()=>$("#fileImport").click();
@@ -2966,7 +3125,7 @@ $("#fileImport").onchange=e=>{
     else{
       try{
         const d=JSON.parse(txt);
-        if(d.events)events=d.events; if(d.todos)todos=d.todos; if(d.settings)settings=Object.assign(settings,d.settings); if(d.days)days=d.days;
+        if(d.events)events=d.events; if(d.todos)todos=d.todos; if(d.settings)settings=Object.assign(settings,d.settings); if(d.days)days=d.days; if(d.chores){choreState=Object.assign({checks:{},swaps:{}},d.chores); saveChores();}
         save(LS.days,days); save(LS.events,events);save(LS.todos,todos);save(LS.settings,settings);render();hideSheets();
       }catch(err){alert("That file didn't parse. Import needs a SPECTER export (.json) or a calendar (.ics).")}
     }
@@ -3097,20 +3256,37 @@ $("#vsTextGo").onclick=()=>{const v=$("#vsText").value.trim(); if(v){$("#vsText"
 $("#vsText").addEventListener("keydown",e=>{if(e.key==="Enter")$("#vsTextGo").click()});
 
 /* =============== tabs & list interactions =============== */
-document.querySelectorAll(".tab[data-view]").forEach(t=>{
-  t.onclick=()=>{
-    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-    t.classList.add("active");
-    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-    $("#view-"+t.dataset.view).classList.add("active");
-  };
-});
+function showView(name){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.view===name));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  $("#view-"+name).classList.add("active");
+  if(name==="chores"){ choreDay=choreDefaultDay(); renderChores(); }
+}
+document.querySelectorAll(".tab[data-view]").forEach(t=>{ t.onclick=()=>showView(t.dataset.view); });
+$("#chPrev").onclick=()=>{ choreDay=stepWeekday(choreDay,-1); renderChores(); };
+$("#chNext").onclick=()=>{ choreDay=stepWeekday(choreDay,1); renderChores(); };
+$("#chToday").onclick=()=>{ choreDay=choreDefaultDay(); renderChores(); };
 $("#tabSpeak").onclick=()=>{
   unlockVoice();
   // on the calendar, read whichever day is selected; everywhere else, today
   readAgenda($("#view-cal").classList.contains("active")? selectedDay : todayStr());
 };
 document.addEventListener("click",e=>{
+  const chc=e.target.closest("[data-chore]");
+  if(chc){
+    const ds=choreDay, m=choreState.checks[ds]||(choreState.checks[ds]={});
+    if(m[chc.dataset.chore]) delete m[chc.dataset.chore]; else m[chc.dataset.chore]=1;
+    saveChores(); renderChores(); renderToday(); return;
+  }
+  const chs=e.target.closest("[data-chswap]");
+  if(chs){
+    const ds=choreDay, id=chs.dataset.chswap, c=choresOn(ds).find(x=>x.id===id); if(!c) return;
+    const sw=choreState.swaps[ds]||(choreState.swaps[ds]={});
+    if(sw[id]) delete sw[id]; else sw[id]= c.who==="dad"?"kid":"dad";
+    saveChores(); renderChores(); return;
+  }
+  const go=e.target.closest("[data-goto]");
+  if(go){ showView(go.dataset.goto); return; }
   const chk=e.target.closest("[data-check]");
   if(chk){
     const t=todos.find(x=>x.id===chk.dataset.check); if(!t) return;
