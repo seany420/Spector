@@ -296,6 +296,12 @@ nav{
 .cal-cell.past .cal-dots{opacity:.5}
 .slash{position:absolute;inset:0;background-size:100% 100%;pointer-events:none;opacity:.88}
 .cal-emoji{z-index:1}
+.tidy-card{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.tidy-head{font-family:var(--mono);font-size:12px;color:var(--ecto);margin-bottom:6px}
+.tidy-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:14px;line-height:1.35;cursor:pointer}
+.tidy-row input{accent-color:var(--ecto);width:18px;height:18px;margin-top:1px;flex-shrink:0}
+.tidy-row small{display:block;color:var(--bone-dim);font-size:12px;margin-top:2px}
+.tidy-link{background:none;border:none;color:var(--bone-dim);font-size:12px;text-decoration:underline;cursor:pointer;padding:4px 0;font-family:'Karla',sans-serif}
 .agenda-item.colored{border-left:4px solid var(--evc)}
 .swatches{display:grid;grid-template-columns:repeat(9,1fr);gap:7px;max-width:380px}
 .swatch{
@@ -418,6 +424,7 @@ nav{
           <button class="btn btn-ghost" id="addEventBtn">+ Add event</button>
           <button class="btn btn-ghost" id="decorDayBtn">🎨 Color &amp; emoji</button>
         </div>
+        <button class="btn btn-ghost" id="tidyBtn">🧹 Tidy up calendars</button>
       </div>
     </section>
 
@@ -523,6 +530,15 @@ nav{
   <div class="field"><label>Or type any emoji</label><input id="decorEmojiCustom" maxlength="8" autocomplete="off" placeholder="Tap here, then pick from your emoji keyboard"></div>
   <button class="btn btn-primary" id="decorSave">Save</button>
   <button class="btn btn-ghost" id="decorClear">Clear this day</button>
+</div>
+
+<!-- TIDY SHEET -->
+<div class="sheet" id="tidySheet">
+  <div class="grabber"></div>
+  <h3>Tidy up</h3>
+  <div id="tidyBody"></div>
+  <button class="btn btn-primary" id="tidyApply" style="display:none;margin-top:12px">Apply</button>
+  <button class="btn btn-ghost" id="tidyClose">Close</button>
 </div>
 
 <!-- SETTINGS SHEET -->
@@ -709,7 +725,7 @@ const save = (k,v)=>{ localStorage.setItem(k,JSON.stringify(v)); if(k===LS.event
 let events = load(LS.events,[]);
 let todos  = load(LS.todos,[]);
 let settings = Object.assign({announce:true,confirm:true,handsFree:true,rate:1.0,defRem:"15",theme:"classic",kill:"random",voiceStyle:"host",voiceName:"",pitch:0.7,readTap:true,slashPast:true,engine:"device",oaiVoice:"onyx",improvise:false,digest:true,digestTime:"07:30"},load(LS.settings,{}));
-const APP_VERSION="2026.11.15";
+const APP_VERSION="2026.11.23";
 let days = load(LS.days,{}); // "YYYY-MM-DD" → {color, emoji}
 let fired = load(LS.fired,{});
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -2132,7 +2148,7 @@ async function olSync(){
     const desired=olDesired(), gen=Date.now();
     if(!olAuth.linked){ olStatus("checking Outlook for events you already have…"); const n=await olLinkExisting(desired); olAuth.linked=true; olAuth.linkedCount=n; olSaveAuth(); }
     const gone=Object.keys(olMap).filter(k=>!desired[k]);
-    for(const k of gone){ if(olMap[k].owned) await olRemove(olMap[k].gid); delete olMap[k]; olSaveMap(); }
+    for(const k of gone){ if(olMap[k].owned) await olRemove(olMap[k].gid); else olIgnoreAdd(olMap[k].gid); delete olMap[k]; olSaveMap(); }
     const todo=Object.keys(desired).filter(k=>!olMap[k]||olMap[k].sig!==desired[k].sig);
     let done=0, failed=0, lastErr="";
     const worker=async()=>{ while(todo.length){ const k=todo.shift();
@@ -2366,6 +2382,241 @@ $("#decorSave").onclick=()=>{
 };
 $("#decorClear").onclick=()=>{ delete days[decorDay]; save(LS.days,days); render(); hideSheets(); };
 $("#decorDayBtn").onclick=()=>openDecor(selectedDay);
+
+/* =============== tidy up: pull from Outlook, find duplicates, even out titles ===============
+   1. Push any SPECTER changes still waiting, so nothing of yours gets overwritten.
+   2. Pull Outlook (2 weeks back, 6 months ahead): events made in Outlook come into SPECTER,
+      and events changed in Outlook update SPECTER. Each is linked so it never bounces back as a copy.
+   3. Review: same-time look-alikes, things deleted in Outlook, messy titles. Nothing is removed
+      until Apply; then the normal Outlook sync carries every change across. */
+const OL_IGNORE="specter_ol_ignore", TIDY_NOTDUP="specter_tidy_notdup";
+let olIgnore=new Set(load(OL_IGNORE,[]));
+function olIgnoreAdd(gid){ olIgnore.add(gid); try{ localStorage.setItem(OL_IGNORE,JSON.stringify([...olIgnore].slice(-1000))); }catch(e){} }
+let tidyNotDup=new Set(load(TIDY_NOTDUP,[]));
+const olConnected=()=>!!(olAuth.clientId && (olAuth.rt||olAuth.at) && !olAuth.needsReconnect);
+const minsBetween=(a,b)=>Math.round((new Date(b.slice(0,19))-new Date(a.slice(0,19)))/60000);
+function evFromGraph(o){
+  const allDay=!!o.isAllDay, time=allDay? null : o.start.dateTime.slice(11,16);
+  let dur=allDay? null : minsBetween(o.start.dateTime,o.end.dateTime); if(!(dur>0&&dur<1440)) dur=null;
+  const rem=(!allDay && o.isReminderOn && o.reminderMinutesBeforeStart!=null)? String(o.reminderMinutesBeforeStart) : "";
+  let notes=String(o.bodyPreview||"").replace(/\s+/g," ").trim();
+  if(notes.length>140 || /teams|join the meeting|zoom\.|meeting id|passcode/i.test(notes)) notes="";
+  return {title:String(o.subject||"").trim()||"(untitled)", date:o.start.dateTime.slice(0,10), time, dur, rec:null, rem, notes};
+}
+function recFromGraph(r){
+  // only what SPECTER can express exactly; anything else comes in occurrence by occurrence
+  if(!r||!r.pattern||!r.range||(r.pattern.interval||1)!==1||r.range.type==="numbered") return null;
+  const p=r.pattern; let rec=null;
+  if(p.type==="daily") rec={freq:"daily"};
+  else if(p.type==="weekly"){ rec={freq:"weekly"}; const d=(p.daysOfWeek||[]).map(x=>GRAPH_DAYS.indexOf(String(x).toLowerCase())).filter(i=>i>=0); if(d.length) rec.days=d; }
+  else if(p.type==="absoluteMonthly") rec={freq:"monthly"};
+  else return null;
+  if(r.range.type==="endDate"&&r.range.endDate) rec.until=r.range.endDate;
+  return rec;
+}
+async function pullOutlook(rep){
+  const pref={"Prefer":`outlook.timezone="${olTz()}"`};
+  const from=new Date(); from.setDate(from.getDate()-14); from.setHours(0,0,0,0);
+  const to=new Date(); to.setDate(to.getDate()+183);
+  let url=`/me/calendarView?startDateTime=${encodeURIComponent(from.toISOString())}&endDateTime=${encodeURIComponent(to.toISOString())}`+
+    `&$select=id,subject,start,end,isAllDay,seriesMasterId,isOrganizer,bodyPreview,isReminderOn,reminderMinutesBeforeStart,isCancelled&$top=250`;
+  const items=[]; let pages=0;
+  while(url && pages++<40){ const j=await olGraph("GET",url,null,pref); items.push(...(j.value||[])); url=j["@odata.nextLink"]||null; }
+  const desired0=olDesired(), byGid={}, seen=new Set(), masters={}, done=new Set(), links=[];
+  Object.entries(olMap).forEach(([k,m])=>{ byGid[m.gid]=k; });
+  const master=async id=> masters[id]||(masters[id]=await olGraph("GET",`/me/events/${id}?$select=id,subject,start,end,isAllDay,recurrence,isOrganizer,bodyPreview,isReminderOn,reminderMinutesBeforeStart`,null,pref));
+  for(const o of items){
+    seen.add(o.id); if(o.seriesMasterId) seen.add(o.seriesMasterId);
+    if(o.isCancelled || olIgnore.has(o.id) || (o.seriesMasterId && olIgnore.has(o.seriesMasterId))) continue;
+    const asSeries=!!(o.seriesMasterId && byGid[o.seriesMasterId]), k=asSeries? byGid[o.seriesMasterId] : byGid[o.id];
+    if(k){                                                     // already linked: did it change in Outlook?
+      if(!k.startsWith("ev:")) continue;
+      const gid=asSeries? o.seriesMasterId : o.id; if(done.has(gid)) continue; done.add(gid);
+      const ev=events.find(e=>"ev:"+e.id===k); if(!ev) continue;
+      if(!(desired0[k] && olMap[k].sig===desired0[k].sig)) continue;   // SPECTER has unsent edits: SPECTER wins
+      const src=evFromGraph(asSeries? await master(gid) : o);
+      const ch={}, norm=(f,v)=>f==="title"? String(v||"").trim() : (v??null);
+      ["title","time","dur"].forEach(f=>{ if(norm(f,ev[f])!==norm(f,src[f])) ch[f]=src[f]; });
+      if(!ev.rec && ev.date!==src.date) ch.date=src.date;
+      if(Object.keys(ch).length){ Object.assign(ev,ch); rep.updated.push(ev.title); links.push([ev.id,gid,olMap[k].owned,!!ev.rec]); }
+      continue;
+    }
+    if(/^(☠ Today:|☐ )/.test(String(o.subject||""))) continue;  // leftovers of SPECTER's own briefings and tasks
+    if(o.seriesMasterId){
+      if(done.has(o.seriesMasterId)) continue;
+      const m=await master(o.seriesMasterId), rec=recFromGraph(m.recurrence);
+      if(rec){
+        done.add(o.seriesMasterId);
+        const ev=Object.assign({id:uid()},evFromGraph(m),{rec}); events.push(ev);
+        links.push([ev.id,o.seriesMasterId,m.isOrganizer!==false,true]); rep.added.push(ev.title); continue;
+      }
+    }
+    const ev=Object.assign({id:uid()},evFromGraph(o)); events.push(ev);
+    links.push([ev.id,o.id,o.isOrganizer!==false,false]); rep.added.push(ev.title);
+  }
+  // linked one-off events in the window that Outlook no longer has
+  const lo=ymd(from), hi=ymd(to);
+  Object.entries(olMap).forEach(([k,m])=>{
+    if(!k.startsWith("ev:")||seen.has(m.gid)) return;
+    const ev=events.find(e=>"ev:"+e.id===k);
+    if(ev && !ev.rec && ev.date>=lo && ev.date<=hi) rep.gone.push(ev.id);
+  });
+  if(links.length){
+    save(LS.events,events);
+    const d=olDesired();
+    links.forEach(([id,gid,owned,hadRec])=>{ const k="ev:"+id, x=d[k]; olMap[k]={gid,sig:x?x.sig:"",shape:x?x.shape:"",excl:x?x.excl:[],owned,hadRec}; });
+    olSaveMap();
+  }
+}
+
+/* ---------- duplicate finder ---------- */
+const TIDY_STOP=new Set("meeting mtg meet appt appointment the a an with w and of for to call session at re".split(" "));
+function titleTokens(t){
+  const raw=String(t).toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g," ").trim().split(" ").filter(Boolean);
+  const f=raw.filter(w=>!TIDY_STOP.has(w)); return f.length? f : raw;
+}
+function lev(a,b){ const d=Array.from({length:b.length+1},(_,i)=>i); for(let i=1;i<=a.length;i++){ let p=d[0]; d[0]=i; for(let j=1;j<=b.length;j++){ const t=d[j]; d[j]=Math.min(d[j]+1,d[j-1]+1,p+(a[i-1]===b[j-1]?0:1)); p=t; } } return d[b.length]; }
+function sameThing(a,b){
+  const A=new Set(titleTokens(a)), B=new Set(titleTokens(b)); if(!A.size||!B.size) return false;
+  if([...A].every(x=>B.has(x))||[...B].every(x=>A.has(x))) return true;     // "Admin" vs "H+S admin meeting"
+  const inter=[...A].filter(x=>B.has(x)).length; if(inter/(A.size+B.size-inter)>=.6) return true;
+  const x=[...A].join(" "), y=[...B].join(" "); return 1-lev(x,y)/Math.max(x.length,y.length)>=.85;   // typos
+}
+function groupPairs(pairs){
+  const parent={}, f=x=>parent[x]===x? x : (parent[x]=f(parent[x]));
+  pairs.forEach(([a,b])=>{ parent[a]=parent[a]||a; parent[b]=parent[b]||b; parent[f(a)]=f(b); });
+  const g={}; Object.keys(parent).forEach(x=>{ (g[f(x)]=g[f(x)]||[]).push(x); }); return Object.values(g);
+}
+function findEventDupes(){
+  const pairs=[], firstSeen={}, keys=new Set();
+  for(let i=-7;i<=120;i++){
+    const d=new Date(); d.setDate(d.getDate()+i); const ds=ymd(d), evs=eventsOn(ds);
+    for(let a=0;a<evs.length;a++) for(let b=a+1;b<evs.length;b++){
+      const x=evs[a], y=evs[b]; if((x.time||"")!==(y.time||"")) continue;
+      const key=[x.id,y.id].sort().join("|"); if(keys.has(key)||tidyNotDup.has(key)) continue;
+      keys.add(key); if(!sameThing(x.title,y.title)) continue;
+      pairs.push([x.id,y.id]); if(!firstSeen[x.id]) firstSeen[x.id]=ds; if(!firstSeen[y.id]) firstSeen[y.id]=ds;
+    }
+  }
+  return groupPairs(pairs).map(ids=>{
+    const list=ids.map(id=>events.find(e=>e.id===id));
+    const score=e=>{ const m=olMap["ev:"+e.id]; return (m&&!m.owned?4:0)+(e.rec?2:0)+(e.rem!==""&&e.rem!=null?1:0)+(e.notes?.5:0)+titleTokens(e.title).length*.1+e.title.length*.001; };
+    const keep=[...list].sort((a,b)=>score(b)-score(a))[0].id;
+    const on=ids.map(id=>firstSeen[id]).sort()[0];
+    return {kind:"event",ids,keep,on,time:list[0].time};
+  });
+}
+function findTaskDupes(){
+  const open=todos.filter(t=>!t.done), pairs=[];
+  for(let a=0;a<open.length;a++) for(let b=a+1;b<open.length;b++){
+    const x=open[a], y=open[b], key=[x.id,y.id].sort().join("|");
+    if(tidyNotDup.has(key) || (x.due&&y.due&&x.due!==y.due) || !sameThing(x.title,y.title)) continue;
+    pairs.push([x.id,y.id]);
+  }
+  return groupPairs(pairs).map(ids=>{
+    const list=ids.map(id=>todos.find(t=>t.id===id));
+    const keep=[...list].sort((a,b)=>((b.due?2:0)+b.title.length*.001)-((a.due?2:0)+a.title.length*.001))[0].id;
+    return {kind:"task",ids,keep};
+  });
+}
+const tidyTitle=t=>String(t).replace(/\s+/g," ").trim().replace(/[\s.,;:]+$/,"").replace(/^[a-z]/,c=>c.toUpperCase());
+function findRenames(){
+  const out=[];
+  events.forEach(e=>{ const m=olMap["ev:"+e.id]; if(m&&!m.owned) return;   // someone else's invite: Outlook's title stands
+    const t=tidyTitle(e.title); if(t&&t!==e.title) out.push({kind:"event",id:e.id,from:e.title,to:t,on:true}); });
+  todos.filter(x=>!x.done).forEach(x=>{ const t=tidyTitle(x.title); if(t&&t!==x.title) out.push({kind:"task",id:x.id,from:x.title,to:t,on:true}); });
+  return out;
+}
+
+/* ---------- the review sheet ---------- */
+let tidyPlan=null;
+function tidySource(e){ const m=olMap["ev:"+e.id]; return m? (m.owned? "in Outlook too" : "Outlook invite") : (olConnected()? "SPECTER only" : ""); }
+function renderTidy(){
+  const p=tidyPlan, b=$("#tidyBody"); let h=`<p class="view-sub" style="margin-bottom:12px">${esc(p.summary)}</p>`;
+  const live=p.groups.filter(g=>!g.skip);
+  if(live.length){
+    h+=`<div class="section-label">Duplicates (${live.length})</div>`;
+    p.groups.forEach((g,gi)=>{ if(g.skip) return;
+      const list=g.kind==="event"? g.ids.map(id=>events.find(e=>e.id===id)) : g.ids.map(id=>todos.find(t=>t.id===id));
+      const head=g.kind==="event"? `${niceDate(g.on)} · ${g.time? niceTime(g.time) : "all day"}` : "Task";
+      h+=`<div class="tidy-card"><div class="tidy-head">${esc(head)}</div>`+list.map(x=>{
+        const meta=g.kind==="event"? [x.rec?"repeats":"",tidySource(x)].filter(Boolean).join(" · ") : (x.due? "due "+niceDate(x.due) : "no due date");
+        return `<label class="tidy-row"><input type="radio" name="tg${gi}" data-tg="${gi}" value="${x.id}" ${x.id===g.keep?"checked":""}>
+          <span><b>Keep</b> ${esc(x.title)}${meta?`<small>${esc(meta)}</small>`:""}</span></label>`;}).join("")+
+        `<button class="tidy-link" data-notdup="${gi}">Not duplicates</button></div>`;
+    });
+  }
+  if(p.gone.length){
+    h+=`<div class="section-label">Deleted in Outlook (${p.gone.length})</div>`;
+    p.gone.forEach((x,i)=>{ const e=events.find(v=>v.id===x.id); if(!e) return;
+      h+=`<label class="tidy-row"><input type="checkbox" data-gone="${i}" ${x.on?"checked":""}><span>Remove <b>${esc(e.title)}</b><small>${esc(niceDate(e.date)+(e.time?" · "+niceTime(e.time):""))}</small></span></label>`; });
+  }
+  if(p.renames.length){
+    h+=`<div class="section-label">Tidy titles (${p.renames.length})</div>`;
+    p.renames.forEach((r,i)=>{ h+=`<label class="tidy-row"><input type="checkbox" data-ren="${i}" ${r.on?"checked":""}><span>${esc(r.from)} → <b>${esc(r.to)}</b></span></label>`; });
+  }
+  const any=live.length||p.gone.length||p.renames.length;
+  if(!any) h+=`<div class="empty-state" style="padding:22px"><div class="es-glyph">✦</div><p>All clean. No duplicates, nothing out of step.</p></div>`;
+  b.innerHTML=h; $("#tidyApply").style.display=any?"block":"none";
+}
+$("#tidyBody").addEventListener("change",e=>{
+  const t=e.target, p=tidyPlan; if(!p) return;
+  if(t.dataset.tg!=null) p.groups[+t.dataset.tg].keep=t.value;
+  if(t.dataset.gone!=null) p.gone[+t.dataset.gone].on=t.checked;
+  if(t.dataset.ren!=null) p.renames[+t.dataset.ren].on=t.checked;
+});
+$("#tidyBody").addEventListener("click",e=>{
+  const nd=e.target.closest("[data-notdup]"); if(!nd||!tidyPlan) return;
+  const g=tidyPlan.groups[+nd.dataset.notdup]; g.skip=true;
+  for(let i=0;i<g.ids.length;i++) for(let j=i+1;j<g.ids.length;j++) tidyNotDup.add([g.ids[i],g.ids[j]].sort().join("|"));
+  try{ localStorage.setItem(TIDY_NOTDUP,JSON.stringify([...tidyNotDup].slice(-1000))); }catch(err){}
+  renderTidy();
+});
+async function startTidy(){
+  tidyPlan=null; $("#tidyApply").style.display="none";
+  $("#tidyBody").innerHTML=`<p class="view-sub">${olConnected()? "Checking Outlook…" : "Checking SPECTER…"}</p>`;
+  show("tidySheet");
+  const rep={added:[],updated:[],gone:[]}; let summary;
+  if(olConnected()){
+    try{
+      while(olRunning) await sleep(300);
+      await olSync();                                  // send waiting SPECTER changes first
+      while(olRunning) await sleep(300);
+      olRunning=true;
+      try{ await pullOutlook(rep); } finally{ olRunning=false; }
+      const bits=[]; if(rep.added.length) bits.push(`${rep.added.length} new from Outlook`); if(rep.updated.length) bits.push(`${rep.updated.length} updated from Outlook`);
+      summary= bits.length? `Pulled in ${bits.join(", ")}.` : "SPECTER and Outlook were already in step.";
+      render();
+    }catch(e){ summary=`Couldn't reach Outlook (${e.message}). Checked SPECTER only.`; }
+  }else summary="Outlook isn't connected, so this checked SPECTER only.";
+  tidyPlan={summary, groups:[...findEventDupes(),...findTaskDupes()], gone:rep.gone.map(id=>({id,on:true})), renames:findRenames()};
+  renderTidy();
+}
+function applyTidy(){
+  const p=tidyPlan; if(!p) return; let n=0;
+  p.groups.forEach(g=>{ if(g.skip) return;
+    const drop=g.ids.filter(id=>id!==g.keep);
+    if(g.kind==="event"){
+      const k=events.find(e=>e.id===g.keep);
+      drop.forEach(id=>{ const o=events.find(e=>e.id===id); if(!k||!o) return;
+        if((k.rem===""||k.rem==null)&&o.rem) k.rem=o.rem; if(!k.notes&&o.notes) k.notes=o.notes; if(!k.color&&o.color) k.color=o.color; });
+      events=events.filter(e=>!drop.includes(e.id));
+    }else{
+      const k=todos.find(t=>t.id===g.keep);
+      drop.forEach(id=>{ const o=todos.find(t=>t.id===id); if(k&&o&&!k.due&&o.due) k.due=o.due; });
+      todos=todos.filter(t=>!drop.includes(t.id));
+    }
+    n+=drop.length;
+  });
+  p.gone.forEach(x=>{ if(x.on){ events=events.filter(e=>e.id!==x.id); n++; } });
+  p.renames.forEach(r=>{ if(!r.on) return; const x=(r.kind==="event"?events:todos).find(v=>v.id===r.id); if(x){ x.title=r.to; n++; } });
+  save(LS.events,events); save(LS.todos,todos); render(); hideSheets();
+  showBanner("Tidied up", `${n} change${n===1?"":"s"}${olConnected()?" · Outlook will match in a moment":""}`);
+  tidyPlan=null;
+}
+$("#tidyBtn").onclick=startTidy;
+$("#tidyApply").onclick=applyTidy;
+$("#tidyClose").onclick=hideSheets;
 
 /* =============== rendering =============== */
 function renderHeader(){
