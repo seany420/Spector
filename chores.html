@@ -156,7 +156,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--note-line);outl
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const FIREBASE_CONFIG = null; // paste {apiKey, authDomain, databaseURL, projectId, appId} here
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCY4kKYukufCZ24i6kTcxSKStJ9XG_FnBU",
+  authDomain: "chore-chart-6163c.firebaseapp.com",
+  databaseURL: "https://chore-chart-6163c-default-rtdb.firebaseio.com",
+  projectId: "chore-chart-6163c",
+  storageBucket: "chore-chart-6163c.firebasestorage.app",
+  messagingSenderId: "398538975791",
+  appId: "1:398538975791:web:33041b2cdfc5ae067274da"
+};
 const HOUSE = "bar-prep-2027";  // all data lives under households/<HOUSE>
 
 const START="2026-11-23", END="2027-02-26", EXAM="2027-02-23";
