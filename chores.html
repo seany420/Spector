@@ -33,6 +33,10 @@ html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%;
   padding:calc(env(safe-area-inset-top,0px) + 18px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 40px) max(16px,env(safe-area-inset-left,0px))}
 [hidden]{display:none!important}
+/* Embedded inside SPECTER: the app passes its own colors; hide the page title. */
+html.embed body{padding-top:14px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+html.embed h1{display:none}
+html.embed header{justify-content:flex-end}
 .wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
 h1{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:-.02em;margin:0;line-height:1}
@@ -232,6 +236,18 @@ const DAYS={
   "2027-02-25":{alert:"She's done."},
 };
 
+/* ---------- embedded in SPECTER ---------- */
+const PARAMS=new URLSearchParams(location.search);
+const EMBED=PARAMS.get("embed")==="1" && window.parent!==window;
+if(EMBED) document.documentElement.classList.add("embed");
+const toParent=msg=>{ if(EMBED) try{ window.parent.postMessage(msg,location.origin); }catch(e){} };
+window.addEventListener("message",e=>{
+  if(e.origin!==location.origin || !e.data || e.data.type!=="chores-theme") return;
+  const v=e.data.vars||{}, r=document.documentElement.style;
+  Object.entries(v).forEach(([k,val])=>{ if(/^--[a-z-]+$/.test(k) && typeof val==="string" && val.length<80) r.setProperty(k,val); });
+  if(e.data.scheme) r.setProperty("color-scheme",e.data.scheme);
+});
+
 /* ---------- helpers ---------- */
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -254,6 +270,7 @@ const newId=()=>"c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6
 let S={checks:{},swaps:{},skips:{},chores:{}};
 let me=lsGet("chores_me",null), day=defaultDay(), mgrOpen=false, editing=null;
 let store=null; // {set(path,value), remove(path)}
+if((EMBED||!me) && (PARAMS.get("me")==="dad"||PARAMS.get("me")==="kid")){ me=PARAMS.get("me"); lsSet("chores_me",me); }
 
 function plan(){
   const out=[], over=S.chores||{};
@@ -290,6 +307,8 @@ function render(){
   $("list").hidden=mgrOpen; $("mgr").hidden=!mgrOpen;
   $("mgrBtn").textContent=mgrOpen?"Done editing":"Edit chore list";
   mgrOpen? renderMgr() : renderList();
+  const tl=choresOn(todayStr());
+  toParent({type:"chores-progress",date:todayStr(),done:tl.filter(c=>S.checks[todayStr()+"_"+c.id]).length,total:tl.length});
 }
 function renderList(){
   const list=choresOn(day), box=$("list"); box.replaceChildren();
